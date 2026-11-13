@@ -13,6 +13,7 @@ import { verifyAdmin, uploadSong, deleteSong, updateSong } from '../api/catalog'
 import Cover from '../components/Cover';
 import ChipPicker from '../components/ChipPicker';
 import { LANGUAGES, MOODS } from '../utils/smartShuffle';
+import { readTags } from '../utils/readTags';
 
 const KEY_NAME = 'tunely.adminKey';
 
@@ -201,6 +202,9 @@ export default function AdminScreen({ navigation }) {
           continue; // unreadable file
         }
         const guess = guessFromName(a.name);
+        // Details stored inside the file (title, artists, album, genre, cover) beat guessing from the name.
+        let tags = null;
+        try { tags = await readTags(a.uri); } catch (e) { /* not an MP3 or unreadable tags */ }
         added.push({
           id: `i${++itemCounter}`,
           uri: a.uri,
@@ -208,13 +212,14 @@ export default function AdminScreen({ navigation }) {
           mimeType: a.mimeType,
           size: a.size,
           hash,
-          title: guess.title,
-          artist: guess.artist,
-          album: '',
-          genre: '',
-          language: lastTags.language,
-          mood: lastTags.mood,
-          cover: null,
+          title: tags?.title || guess.title,
+          artist: tags?.artist || guess.artist,
+          album: tags?.album || '',
+          genre: tags?.genre || '',
+          language: tags?.language || lastTags.language,
+          mood: tags?.mood || lastTags.mood,
+          cover: tags?.cover || null,
+          fromTags: !!tags,
           status: 'ready', // ready | working | done | duplicate | error
           message: null,
         });
@@ -317,7 +322,8 @@ export default function AdminScreen({ navigation }) {
                 <Text style={styles.pickText}>{preparing ? 'Reading files...' : 'Choose audio files'}</Text>
               </Pressable>
               <Text style={styles.hint}>
-                Pick MP3, M4A, WAV, FLAC or OGG files. Names like "Artist - Title.mp3" fill in the details for you.
+                Pick MP3, M4A, WAV, FLAC or OGG files. Title, artists, album, genre and cover are read from the
+                file when it has them (otherwise from names like "Artist - Title.mp3"). Check them before uploading.
                 Songs already in the library are skipped.
               </Text>
 
@@ -335,7 +341,10 @@ export default function AdminScreen({ navigation }) {
                       </Pressable>
                       <View style={{ flex: 1 }}>
                         <Text numberOfLines={1} style={styles.fileName}>{it.name}</Text>
-                        <Text style={styles.fileSize}>{it.size ? `${(it.size / (1024 * 1024)).toFixed(1)} MB` : ''}</Text>
+                        <Text style={styles.fileSize}>
+                          {it.size ? `${(it.size / (1024 * 1024)).toFixed(1)} MB` : ''}
+                          {it.fromTags ? ' · details read from the file' : ''}
+                        </Text>
                       </View>
                       {!uploading && it.status !== 'working' && (
                         <Pressable onPress={() => remove(it.id)} hitSlop={10}>
