@@ -1,6 +1,7 @@
 # Compresses newly uploaded songs (320 kbps MP3 -> 128 kbps AAC, about 60% smaller),
 # adds the cover embedded in the file and fills in the song length.
-# Runs every 15 minutes and can be started by hand from the Actions tab.
+# Started by the backend right after each upload (needs GITHUB_TOKEN on the Neon function),
+# every 15 minutes as a backup, and by hand from the Actions tab.
 # Needs the VIBEROOM_ADMIN_KEY repository secret (the app's admin password).
 name: Compress new songs
 
@@ -16,7 +17,7 @@ concurrency:
 jobs:
   optimize:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 

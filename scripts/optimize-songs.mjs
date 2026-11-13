@@ -112,21 +112,32 @@ async function optimize(song, dir) {
   return { before, after: done.after || before };
 }
 
-const { songs } = await api('GET', '/admin/optimize/pending');
-console.log(`${songs.length} song(s) to process`);
+// The server hands out 20 songs at a time. Keep asking until nothing is left, so songs uploaded
+// while this runs are picked up too. Songs that fail are skipped until the next run.
 let saved = 0;
 let failed = 0;
-for (const song of songs) {
-  const dir = await mkdtemp(join(tmpdir(), 'vr-'));
-  try {
-    const r = await optimize(song, dir);
-    saved += r.before - r.after;
-  } catch (e) {
-    failed += 1;
-    console.error(`  ${song.title}: FAILED - ${e.message}`);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
+let done = 0;
+const skip = new Set();
+for (;;) {
+  const { songs } = await api('GET', '/admin/optimize/pending');
+  const todo = songs.filter((s) => !skip.has(s.id));
+  if (!todo.length) break;
+  console.log(`${todo.length} song(s) to process`);
+  for (const song of todo) {
+    const dir = await mkdtemp(join(tmpdir(), 'vr-'));
+    try {
+      const r = await optimize(song, dir);
+      saved += r.before - r.after;
+      done += 1;
+    } catch (e) {
+      failed += 1;
+      skip.add(song.id);
+      console.error(`  ${song.title}: FAILED - ${e.message}`);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   }
+  if (todo.length === songs.length && songs.length < 20) break; // that was the last batch
 }
-console.log(`Saved ${mb(saved)}.${failed ? ` ${failed} failed (will retry next run).` : ''}`);
+console.log(`Compressed ${done} song(s), saved ${mb(saved)}.${failed ? ` ${failed} failed (will retry next run).` : ''}`);
 process.exit(failed ? 1 : 0);

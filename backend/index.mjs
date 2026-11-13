@@ -252,6 +252,7 @@ async function saveSong(body) {
       [title, artist, clean(body.album), clean(body.genre, 60), clean(body.language, 40), clean(body.mood, 40),
         duration, audioKey, artworkKey, hash, size],
     );
+    await startCompression();
     return json(201, { song: toSong(rows[0]) });
   } catch (e) {
     // Unique constraint hit: someone added the same song a moment ago.
@@ -377,6 +378,38 @@ async function deleteSong(id) {
     if (!still.length) await fetch(presign('DELETE', key, 60), { method: 'DELETE' }).catch(() => {});
   }
   return json(200, { deleted: id });
+}
+
+// ---------- automatic compression ----------
+// After a song is added, ask GitHub to run the "Compress new songs" workflow straight away
+// (.github/workflows/optimize.yml). Needs GITHUB_TOKEN: a fine-grained token with
+// "Actions: read and write" on the repo only. Without it, the workflow's 15-minute timer is
+// the only trigger. Several uploads in a row send one request per 20 seconds; the workflow
+// keeps going until no songs are left, so it also picks up songs added while it runs.
+
+const GITHUB_REPO = process.env.GITHUB_REPO || 'codersan18/tunely';
+let lastCompressionStart = 0;
+
+async function startCompression() {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token || Date.now() - lastCompressionStart < 20_000) return;
+  lastCompressionStart = Date.now();
+  try {
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/optimize.yml/dispatches`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: 'application/vnd.github+json',
+        'x-github-api-version': '2022-11-28',
+        'user-agent': 'viberoom-backend',
+      },
+      body: JSON.stringify({ ref: 'main' }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.status !== 204) console.error('Could not start compression:', res.status, (await res.text()).slice(0, 200));
+  } catch (e) {
+    console.error('Could not start compression:', e.message); // the song is saved either way
+  }
 }
 
 // The web version of VibeRoom calls this API from a browser, which needs CORS headers.

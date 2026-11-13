@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# GitHub token for automatic compression (read once, never committed)
+.github-token
