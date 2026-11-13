@@ -42,7 +42,7 @@ export default function PlaylistScreen({ route, navigation }) {
       return p && { ...p, description: 'Your playlist', color: '#3A3A46', artwork: p.tracks[0]?.artwork, icon: 'musical-notes' };
     }
     if (playlistId === 'all') {
-      return { id: 'all', title: 'All songs', description: 'Everything in the Tunely library', color: '#2A5C3B', icon: 'musical-notes', tracks: songs };
+      return { id: 'all', title: 'All songs', description: 'Everything in the VibeRoom library', color: '#2A5C3B', icon: 'musical-notes', tracks: songs };
     }
     if (playlistId.startsWith('artist:')) {
       const name = playlistId.slice('artist:'.length);

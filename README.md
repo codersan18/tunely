@@ -1,10 +1,10 @@
-# Tunely — a Spotify-style music app (React Native + Expo)
+# VibeRoom — a music app (React Native + Expo)
 
 Expo SDK 58 · React Native 0.88 · React Navigation 7 · expo-audio
 
 ## Download (Android)
 
-**[⬇ Download Tunely for Android (APK)](https://expo.dev/artifacts/eas/Z_ZhDibKEwY_VJplcAN_ufp_5en-IW2TcCxhUt4txG4.apk)**
+**[⬇ Download VibeRoom for Android (APK)](https://expo.dev/artifacts/eas/Z_ZhDibKEwY_VJplcAN_ufp_5en-IW2TcCxhUt4txG4.apk)**
 
 Open the link on your Android phone. When the download finishes, tap it to install, and allow "Install unknown apps" if Android asks. If Play Protect warns about an unknown app, tap **More details → Install anyway**.
 

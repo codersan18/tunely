@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "Tunely",
+    "name": "VibeRoom",
     "slug": "tunely",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0E0E10",
+    "backgroundColor": "#0A1226",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.tunely.app"
@@ -15,7 +15,7 @@
       "package": "com.tunely.app",
       "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#0E0E10",
+        "backgroundColor": "#0A1226",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -40,7 +40,16 @@
       ],
       "expo-secure-store",
       "expo-font",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "backgroundColor": "#0A1226",
+          "resizeMode": "contain"
+        }
+      ]
     ],
     "extra": {
       "eas": {

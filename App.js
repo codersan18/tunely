@@ -1,11 +1,14 @@
+import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LibraryProvider } from './src/context/LibraryContext';
 import { PlayerProvider } from './src/context/PlayerContext';
 import { CatalogProvider } from './src/context/CatalogContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import OpeningScreen from './src/components/OpeningScreen';
 
 export default function App() {
+  const [opening, setOpening] = useState(true);
   return (
     <SafeAreaProvider>
       {/* Library (likes, playlists, downloads) wraps the player, because the
@@ -18,6 +21,8 @@ export default function App() {
           </PlayerProvider>
         </CatalogProvider>
       </LibraryProvider>
+      {/* The app loads underneath while the opening screen plays. */}
+      {opening && <OpeningScreen onDone={() => setOpening(false)} />}
     </SafeAreaProvider>
   );
 }
