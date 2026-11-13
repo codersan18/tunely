@@ -6,6 +6,7 @@
 //   POST   /admin/verify          -> 200 if the key is right
 //   POST   /admin/prepare         -> duplicate check + short-lived upload URLs
 //   POST   /admin/songs           -> save the song after the files are uploaded
+//   PATCH  /admin/songs/:id       -> edit a song's details (title, artist, album, genre, language, mood)
 //   DELETE /admin/songs/:id       -> remove a song and its files
 //
 // No dependencies: Postgres via Neon's HTTP SQL endpoint, S3 URLs signed with node:crypto.
@@ -101,6 +102,8 @@ const toSong = (r) => ({
   artist: r.artist,
   album: r.album,
   genre: r.genre,
+  language: r.language, // used by smart shuffle
+  mood: r.mood,
   duration: r.duration == null ? null : Number(r.duration),
   size: r.size_bytes == null ? null : Number(r.size_bytes),
   url: publicUrl(r.audio_key),
@@ -191,10 +194,11 @@ async function saveSong(body) {
 
   try {
     const rows = await sql(
-      `INSERT INTO songs (title, artist, album, genre, duration, audio_key, artwork_key, content_hash, size_bytes)
-       VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), $5, $6, $7, $8, $9)
+      `INSERT INTO songs (title, artist, album, genre, language, mood, duration, audio_key, artwork_key, content_hash, size_bytes)
+       VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, ''), $7, $8, $9, $10, $11)
        RETURNING *`,
-      [title, artist, clean(body.album), clean(body.genre, 60), duration, audioKey, artworkKey, hash, size],
+      [title, artist, clean(body.album), clean(body.genre, 60), clean(body.language, 40), clean(body.mood, 40),
+        duration, audioKey, artworkKey, hash, size],
     );
     return json(201, { song: toSong(rows[0]) });
   } catch (e) {
@@ -202,6 +206,34 @@ async function saveSong(body) {
     if (e.code === '23505') {
       const dup = await findDuplicate(hash, title, artist);
       if (dup) return duplicateResponse(dup);
+    }
+    throw e;
+  }
+}
+
+// Only the fields sent are changed. Empty strings clear optional fields.
+const EDITABLE = { title: 200, artist: 200, album: 200, genre: 60, language: 40, mood: 40 };
+
+async function editSong(id, body) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return json(400, { error: 'bad_id' });
+  const sets = [];
+  const params = [id];
+  for (const [field, max] of Object.entries(EDITABLE)) {
+    if (!(field in body)) continue;
+    let v = clean(body[field], max);
+    if (field === 'title' && !v) return json(400, { error: 'bad_title', message: 'Title is required.' });
+    if (field === 'artist' && !v) v = 'Unknown artist';
+    params.push(v);
+    sets.push(field === 'title' || field === 'artist' ? `${field} = $${params.length}` : `${field} = NULLIF($${params.length}, '')`);
+  }
+  if (!sets.length) return json(400, { error: 'nothing_to_change' });
+  try {
+    const rows = await sql(`UPDATE songs SET ${sets.join(', ')} WHERE id = $1 RETURNING *`, params);
+    if (!rows.length) return json(404, { error: 'not_found' });
+    return json(200, { song: toSong(rows[0]) });
+  } catch (e) {
+    if (e.code === '23505') {
+      return json(409, { error: 'duplicate', reason: 'same_title_artist', message: 'Another song already has this title and artist.' });
     }
     throw e;
   }
@@ -237,6 +269,7 @@ export default {
         if (request.method === 'POST' && path === '/admin/songs') return await saveSong(await request.json());
         const m = path.match(/^\/admin\/songs\/([^/]+)$/);
         if (request.method === 'DELETE' && m) return await deleteSong(m[1]);
+        if (request.method === 'PATCH' && m) return await editSong(m[1], await request.json());
       }
       return json(404, { error: 'not_found' });
     } catch (e) {

@@ -9,8 +9,10 @@ import * as SecureStore from 'expo-secure-store';
 import { File } from 'expo-file-system';
 import { colors } from '../theme';
 import { useCatalog } from '../context/CatalogContext';
-import { verifyAdmin, uploadSong, deleteSong } from '../api/catalog';
+import { verifyAdmin, uploadSong, deleteSong, updateSong } from '../api/catalog';
 import Cover from '../components/Cover';
+import ChipPicker from '../components/ChipPicker';
+import { LANGUAGES, MOODS } from '../utils/smartShuffle';
 
 const KEY_NAME = 'tunely.adminKey';
 
@@ -94,6 +96,53 @@ function Unlock({ onUnlocked }) {
   );
 }
 
+// ---------- Edit a song that's already in the library ----------
+
+function SongEditor({ song, adminKey, onSaved, onCancel, onLocked }) {
+  const [f, setF] = useState({
+    title: song.title, artist: song.artist, album: song.album, genre: song.genre, language: song.language, mood: song.mood,
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
+
+  const save = async () => {
+    if (!f.title.trim()) { setError('Title is required.'); return; }
+    setBusy(true);
+    setError(null);
+    try {
+      await updateSong(adminKey, song.songId, {
+        title: f.title.trim(), artist: f.artist.trim(), album: f.album.trim(), genre: f.genre.trim(), language: f.language, mood: f.mood,
+      });
+      onSaved();
+    } catch (e) {
+      if (e.status === 401) onLocked();
+      setError(e.message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={styles.editor}>
+      <Field label="Title *" value={f.title} onChangeText={set('title')} editable={!busy} />
+      <Field label="Artist" value={f.artist} onChangeText={set('artist')} placeholder="Unknown artist" editable={!busy} />
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <View style={{ flex: 1 }}><Field label="Album" value={f.album} onChangeText={set('album')} placeholder="Optional" editable={!busy} /></View>
+        <View style={{ flex: 1 }}><Field label="Genre" value={f.genre} onChangeText={set('genre')} placeholder="Optional" editable={!busy} /></View>
+      </View>
+      <ChipPicker label="Language" options={LANGUAGES} value={f.language} onChange={set('language')} disabled={busy} />
+      <ChipPicker label="Mood" options={MOODS} value={f.mood} onChange={set('mood')} disabled={busy} />
+      {!!error && <Text style={styles.error}>{error}</Text>}
+      <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'flex-end' }}>
+        <Pressable onPress={onCancel} disabled={busy} style={styles.secondary}><Text style={styles.secondaryText}>Cancel</Text></Pressable>
+        <Pressable onPress={save} disabled={busy} style={[styles.primarySmall, busy && { opacity: 0.6 }]}>
+          {busy ? <ActivityIndicator color={colors.bg} size="small" /> : <Text style={styles.primaryText}>Save</Text>}
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 // ---------- Unlocked ----------
 
 export default function AdminScreen({ navigation }) {
@@ -103,6 +152,10 @@ export default function AdminScreen({ navigation }) {
   const [uploading, setUploading] = useState(false);
   const [preparing, setPreparing] = useState(false);
   const [tab, setTab] = useState('add'); // add | manage
+  const [editing, setEditing] = useState(null); // song id being edited
+  // New files start with the language/mood picked last time (uploads usually come in batches).
+  const [lastTags, setLastTags] = useState({ language: '', mood: '' });
+  const untagged = songs.filter((s) => !s.language || !s.mood).length;
 
   useEffect(() => {
     SecureStore.getItemAsync(KEY_NAME).then((k) => setAdminKey(k || null)).catch(() => setAdminKey(null));
@@ -159,6 +212,8 @@ export default function AdminScreen({ navigation }) {
           artist: guess.artist,
           album: '',
           genre: '',
+          language: lastTags.language,
+          mood: lastTags.mood,
           cover: null,
           status: 'ready', // ready | working | done | duplicate | error
           message: null,
@@ -191,6 +246,8 @@ export default function AdminScreen({ navigation }) {
           artist: it.artist.trim() || 'Unknown artist',
           album: it.album.trim(),
           genre: it.genre.trim(),
+          language: it.language,
+          mood: it.mood,
         }, (stage) => update(it.id, { message: stage }));
         update(it.id, { status: 'done', message: 'Added to the library' });
         added += 1;
@@ -298,6 +355,21 @@ export default function AdminScreen({ navigation }) {
                       </View>
                     </View>
 
+                    <ChipPicker
+                      label="Language (for smart shuffle)"
+                      options={LANGUAGES}
+                      value={it.language}
+                      disabled={locked}
+                      onChange={(v) => { update(it.id, { language: v }); setLastTags((t) => ({ ...t, language: v })); }}
+                    />
+                    <ChipPicker
+                      label="Mood (for smart shuffle)"
+                      options={MOODS}
+                      value={it.mood}
+                      disabled={locked}
+                      onChange={(v) => { update(it.id, { mood: v }); setLastTags((t) => ({ ...t, mood: v })); }}
+                    />
+
                     {(dup || it.message) && (
                       <View style={styles.statusRow}>
                         {it.status === 'working' && <ActivityIndicator size="small" color={colors.accent} />}
@@ -332,18 +404,39 @@ export default function AdminScreen({ navigation }) {
           ) : (
             <ScrollView contentContainerStyle={styles.body}>
               {!songs.length && <Text style={styles.hint}>No songs yet. Add some from the "Add songs" tab.</Text>}
-              {songs.map((s) => (
-                <View key={s.id} style={styles.songRow}>
-                  <Cover uri={s.artwork} seed={s.title} size={44} style={{ borderRadius: 4 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text numberOfLines={1} style={styles.songTitle}>{s.title}</Text>
-                    <Text numberOfLines={1} style={styles.songSub}>{s.artist}{s.genre ? ` · ${s.genre}` : ''}</Text>
+              {untagged > 0 && (
+                <Text style={styles.hint}>
+                  {untagged} {untagged === 1 ? 'song needs' : 'songs need'} a language and mood for smart shuffle. Tap a song to edit it.
+                </Text>
+              )}
+              {songs.map((s) => {
+                const missing = [!s.language && 'language', !s.mood && 'mood'].filter(Boolean);
+                return (
+                  <View key={s.id}>
+                    <Pressable onPress={() => setEditing(editing === s.id ? null : s.id)} style={styles.songRow}>
+                      <Cover uri={s.artwork} seed={s.title} size={44} style={{ borderRadius: 4 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text numberOfLines={1} style={styles.songTitle}>{s.title}</Text>
+                        <Text numberOfLines={1} style={styles.songSub}>{[s.artist, s.language, s.mood].filter(Boolean).join(' · ')}</Text>
+                        {missing.length > 0 && <Text style={styles.needsTags}>Needs {missing.join(' and ')}</Text>}
+                      </View>
+                      <Ionicons name={editing === s.id ? 'chevron-up' : 'create-outline'} size={20} color={colors.textMuted} />
+                      <Pressable onPress={() => confirmDelete(s)} hitSlop={10}>
+                        <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                      </Pressable>
+                    </Pressable>
+                    {editing === s.id && (
+                      <SongEditor
+                        song={s}
+                        adminKey={adminKey}
+                        onCancel={() => setEditing(null)}
+                        onSaved={() => { setEditing(null); refresh(); }}
+                        onLocked={lock}
+                      />
+                    )}
                   </View>
-                  <Pressable onPress={() => confirmDelete(s)} hitSlop={10}>
-                    <Ionicons name="trash-outline" size={20} color={colors.danger} />
-                  </Pressable>
-                </View>
-              ))}
+                );
+              })}
             </ScrollView>
           )}
         </KeyboardAvoidingView>
@@ -382,7 +475,12 @@ const styles = StyleSheet.create({
   status: { flex: 1, fontSize: 13 },
   primary: { backgroundColor: colors.accent, borderRadius: 24, paddingVertical: 14, paddingHorizontal: 32, alignItems: 'center', minWidth: 160 },
   primaryText: { color: colors.bg, fontWeight: '800', fontSize: 15 },
-  songRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  songRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
+  needsTags: { color: '#FFB547', fontSize: 11, marginTop: 2 },
+  editor: { backgroundColor: colors.surface, borderRadius: 10, padding: 12, gap: 10, marginTop: 8 },
+  secondary: { borderRadius: 20, paddingVertical: 10, paddingHorizontal: 18, borderWidth: 1, borderColor: colors.textDim },
+  secondaryText: { color: colors.text, fontWeight: '700' },
+  primarySmall: { backgroundColor: colors.accent, borderRadius: 20, paddingVertical: 10, paddingHorizontal: 24, alignItems: 'center', minWidth: 90 },
   songTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
   songSub: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
 });

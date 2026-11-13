@@ -11,12 +11,13 @@ import { useLibrary } from '../context/LibraryContext';
 import TrackRow from '../components/TrackRow';
 import NamePrompt from '../components/NamePrompt';
 import Sheet, { SheetItem } from '../components/Sheet';
+import ShuffleButton from '../components/ShuffleButton';
 
 const formatMB = (bytes) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
 export default function PlaylistScreen({ route, navigation }) {
   const { playlistId } = route.params;
-  const { playTrack, currentTrack, isPlaying, togglePlay, shuffle, toggleShuffle } = usePlayer();
+  const { playTrack, currentTrack, isPlaying, togglePlay, shuffleMode } = usePlayer();
   const {
     liked, playlists, downloadedTracks, downloadedBytes, deletePlaylist, renamePlaylist,
     isDownloaded, isDownloading, downloadMany, removeDownload,
@@ -75,7 +76,7 @@ export default function PlaylistScreen({ route, navigation }) {
   const onPlay = () => {
     if (!list.length) return;
     if (list.some((t) => t.id === currentTrack?.id)) togglePlay();
-    else playTrack(shuffle ? list[Math.floor(Math.random() * list.length)] : list[0], list);
+    else playTrack(shuffleMode !== 'off' ? list[Math.floor(Math.random() * list.length)] : list[0], list);
   };
 
   const onDownloadAll = () => {
@@ -136,9 +137,7 @@ export default function PlaylistScreen({ route, navigation }) {
           )}
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
-          <Pressable onPress={toggleShuffle} hitSlop={8}>
-            <Ionicons name="shuffle" size={28} color={shuffle ? colors.accent : colors.textMuted} />
-          </Pressable>
+          <ShuffleButton size={28} idleColor={colors.textMuted} />
           <Pressable onPress={onPlay} style={styles.playBtn}>
             <Ionicons name={playingThis ? 'pause' : 'play'} size={28} color={colors.bg} style={!playingThis && { marginLeft: 3 }} />
           </Pressable>

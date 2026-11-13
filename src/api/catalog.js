@@ -14,6 +14,8 @@ export function toTrack(s) {
     artist: s.artist || 'Unknown artist',
     album: s.album || '',
     genre: s.genre || '',
+    language: s.language || '',
+    mood: s.mood || '',
     artwork: s.artwork || null,
     url: s.url,
     duration: s.duration,
@@ -57,6 +59,12 @@ export async function verifyAdmin(adminKey) {
 
 export function deleteSong(adminKey, songId) {
   return request(`/admin/songs/${songId}`, { method: 'DELETE', adminKey });
+}
+
+// Change a song's details. Only the fields given are changed.
+export async function updateSong(adminKey, songId, fields) {
+  const { song } = await request(`/admin/songs/${songId}`, { method: 'PATCH', adminKey, body: fields });
+  return toTrack(song);
 }
 
 const extOf = (name = '') => (name.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
@@ -107,6 +115,8 @@ export async function uploadSong(adminKey, item, onStage = () => {}) {
       artist: item.artist,
       album: item.album,
       genre: item.genre,
+      language: item.language,
+      mood: item.mood,
       size: item.size,
       audioKey: prep.audioKey,
       artworkKey: item.cover ? prep.artworkKey : undefined,

@@ -11,7 +11,7 @@ import Cover from '../components/Cover';
 const GENRE_COLORS = ['#7C3AED', '#0E7490', '#B45309', '#4D7C0F', '#BE185D', '#1D4ED8', '#9D174D', '#0F766E'];
 
 // Searches the library on the phone, so it works offline too.
-const matches = (t, s) => [t.title, t.artist, t.album, t.genre].some((f) => f && f.toLowerCase().includes(s));
+const matches = (t, s) => [t.title, t.artist, t.album, t.genre, t.language, t.mood].some((f) => f && f.toLowerCase().includes(s));
 
 export default function SearchScreen({ navigation }) {
   const { songs, artists, genres } = useCatalog();

@@ -22,6 +22,7 @@ Open the link on your Android phone. When the download finishes, tap it to insta
 ### Premium-style features
 - **Offline downloads** – download a song (••• menu) or a whole playlist (↓ button); downloaded songs play from the phone with no internet. Library → Downloaded shows them and the storage used.
 - **Queue** – "Play next" / "Add to queue" from any song's menu; the Queue screen (list icon in the player) lets you jump to a song, remove songs, or clear Up Next.
+- **Smart shuffle** – tap the shuffle button twice (sparkle icon). After each song it plays the closest match from the whole library: same language and mood first, then genre and artist. It avoids repeats and songs you skipped; "Play next" songs still come first. Set each song's Language and Mood when uploading, or edit them in Manage songs → Library.
 - **Sleep timer** – moon icon in the player: 5–60 minutes or end of the current song.
 - **Your own playlists** – create (+ in Library), add songs, remove songs, rename, delete.
 - **Saved on the phone** – liked songs, playlists and downloads survive app restarts (AsyncStorage + expo-file-system).

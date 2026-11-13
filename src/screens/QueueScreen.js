@@ -5,14 +5,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
 import Cover from '../components/Cover';
 import { usePlayer } from '../context/PlayerContext';
+import { vibeLabel } from '../utils/smartShuffle';
 
 function Row({ track, onPress, right, active }) {
+  const vibe = track.smart ? vibeLabel(track) : '';
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}>
       <Cover uri={track.artwork} seed={track.title} style={styles.art} />
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={[styles.title, active && { color: colors.accent }]}>{track.title}</Text>
-        <Text numberOfLines={1} style={styles.artist}>{track.artist}</Text>
+        <Text numberOfLines={1} style={styles.artist}>
+          {track.smart && <Ionicons name="sparkles" size={12} color={colors.accent} />}
+          {track.smart ? ' ' : ''}{track.artist}{vibe ? ` · ${vibe}` : ''}
+        </Text>
       </View>
       {right}
     </Pressable>
@@ -20,7 +25,7 @@ function Row({ track, onPress, right, active }) {
 }
 
 export default function QueueScreen({ navigation }) {
-  const { currentTrack, upNext, jumpTo, removeFromQueue, clearUpNext, shuffle } = usePlayer();
+  const { currentTrack, upNext, jumpTo, removeFromQueue, clearUpNext, shuffle, smartShuffle } = usePlayer();
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -41,13 +46,16 @@ export default function QueueScreen({ navigation }) {
             <Text style={styles.section}>Now playing</Text>
             {currentTrack ? <Row track={currentTrack} active /> : <Text style={styles.empty}>Nothing playing</Text>}
             <View style={styles.nextHead}>
-              <Text style={styles.section}>Next up{shuffle ? ' (shuffle on)' : ''}</Text>
+              <Text style={styles.section}>Next up{smartShuffle ? ' (smart shuffle)' : shuffle ? ' (shuffle on)' : ''}</Text>
               {!!upNext.length && (
                 <Pressable onPress={clearUpNext} hitSlop={8}>
                   <Text style={styles.clear}>Clear</Text>
                 </Pressable>
               )}
             </View>
+            {smartShuffle && (
+              <Text style={styles.hint}>Smart shuffle picks songs like the one playing: same language and mood first. Tap ✕ on a pick to get a different one.</Text>
+            )}
           </View>
         }
         ListEmptyComponent={<Text style={styles.empty}>Use "Play next" or "Add to queue" from any song's menu.</Text>}
@@ -79,4 +87,5 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 15, fontWeight: '600' },
   artist: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
   empty: { color: colors.textMuted, marginTop: 8 },
+  hint: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginBottom: 8 },
 });

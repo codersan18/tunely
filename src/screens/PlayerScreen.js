@@ -9,6 +9,8 @@ import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
 import TrackOptions from '../components/TrackOptions';
 import SleepTimerSheet from '../components/SleepTimerSheet';
+import ShuffleButton from '../components/ShuffleButton';
+import { vibeLabel } from '../utils/smartShuffle';
 
 // Everything on the player screen except the artwork and its spacing takes roughly this much height.
 const NON_ART_HEIGHT = 300;
@@ -68,7 +70,7 @@ function SeekBar({ position, duration, onSeek }) {
 export default function PlayerScreen({ navigation }) {
   const {
     currentTrack, isPlaying, isBuffering, position, duration, togglePlay, next, previous, seekTo,
-    shuffle, repeat, toggleShuffle, cycleRepeat, sleepAt, sleepAfterTrack,
+    smartShuffle, upNext, repeat, cycleRepeat, sleepAt, sleepAfterTrack,
   } = usePlayer();
   const { isLiked, toggleLike, isDownloaded } = useLibrary();
   const [menu, setMenu] = useState(false);
@@ -134,9 +136,7 @@ export default function PlayerScreen({ navigation }) {
         <SeekBar position={position} duration={duration} onSeek={seekTo} />
 
         <View style={styles.controls}>
-          <Pressable onPress={toggleShuffle} hitSlop={10}>
-            <Ionicons name="shuffle" size={26} color={shuffle ? colors.accent : colors.text} />
-          </Pressable>
+          <ShuffleButton size={26} />
           <Pressable onPress={previous} hitSlop={10}>
             <Ionicons name="play-skip-back" size={34} color={colors.text} />
           </Pressable>
@@ -167,6 +167,14 @@ export default function PlayerScreen({ navigation }) {
               <Text style={styles.sleepText}>{Math.max(1, Math.round((sleepAt - Date.now()) / 60000))}m</Text>
             )}
           </Pressable>
+          {smartShuffle && upNext[0] && (
+            <Pressable onPress={() => navigation.navigate('Queue')} style={styles.smartPill}>
+              <Ionicons name="sparkles" size={14} color={colors.accent} />
+              <Text numberOfLines={1} style={styles.smartText}>
+                Next: {upNext[0].title}{vibeLabel(upNext[0]) ? ` · ${vibeLabel(upNext[0])}` : ''}
+              </Text>
+            </Pressable>
+          )}
           <Pressable onPress={() => navigation.navigate('Queue')} hitSlop={10} style={styles.footerBtn}>
             <Ionicons name="list" size={24} color={colors.textMuted} />
           </Pressable>
@@ -201,5 +209,7 @@ const styles = StyleSheet.create({
   playBtn: { width: 68, height: 68, borderRadius: 34, backgroundColor: colors.text, alignItems: 'center', justifyContent: 'center' },
   footerBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   sleepText: { color: colors.accent, fontSize: 12, fontWeight: '700' },
-  footer: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 'auto', marginBottom: 16 },
+  footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 'auto', marginBottom: 16 },
+  smartPill: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, backgroundColor: 'rgba(46,230,166,0.12)' },
+  smartText: { flex: 1, color: colors.text, fontSize: 12, fontWeight: '600' },
 });
