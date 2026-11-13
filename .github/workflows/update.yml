@@ -1,0 +1,38 @@
+# Sends app code changes to everyone's installed VibeRoom over the air.
+# Runs on every push to main. Needs the EXPO_TOKEN repository secret.
+name: Publish app update
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'backend/**'
+  workflow_dispatch:
+
+concurrency:
+  group: eas-update
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: npm ci
+
+      - name: Publish update to the preview channel
+        env:
+          MESSAGE: ${{ github.event.head_commit.message || 'Manual update' }}
+        run: eas update --channel preview --environment preview --non-interactive --message "$(echo "$MESSAGE" | head -n 1)"

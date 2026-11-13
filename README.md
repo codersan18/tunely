@@ -79,3 +79,15 @@ For the Play Store, create your own keystore and use `--profile production` to g
 (download from a song's ••• menu or a playlist's ↓ button). Songs that aren't downloaded need internet.
 
 Only upload music you own or have permission to share: everyone who installs the app can play it.
+
+## Shipping changes
+
+| You change | What happens |
+|---|---|
+| Songs (in the app's admin screen) | Live for everyone right away. |
+| App code (screens, design, features) | Push to `main`. GitHub Actions runs `eas update` and every installed app picks it up the next time it is opened. |
+| Icon, name, splash, or a package with native code | Build a new APK (`npx eas-cli@latest build --profile preview --platform android`) and share the new link. |
+
+Updates use the `fingerprint` runtime version, so an update only reaches APKs with matching native code. Builds from before over-the-air updates were added (the first two) can't receive updates.
+
+The workflow (`.github/workflows/update.yml`) needs an Expo access token saved as the `EXPO_TOKEN` repository secret. To publish by hand instead: `npx eas-cli@latest update --channel preview --environment preview --message "what changed"`.

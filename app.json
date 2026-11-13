@@ -56,6 +56,14 @@
         "projectId": "9bf8ad56-14aa-412b-914c-1b219241775d"
       }
     },
-    "owner": "ashersan18s-team"
+    "owner": "ashersan18s-team",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/9bf8ad56-14aa-412b-914c-1b219241775d",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    }
   }
 }
