@@ -4,7 +4,7 @@ Expo SDK 58 · React Native 0.88 · React Navigation 7 · expo-audio
 
 ## Download (Android)
 
-**[⬇ Download VibeRoom for Android (APK)](https://expo.dev/artifacts/eas/eYvdpXPrd6KlSt5hiKag295NqYZo7ZTq6B0GMcW5MPw.apk)**
+**[⬇ Download VibeRoom for Android (APK)](https://expo.dev/artifacts/eas/yQuy8uuxWtYjnGRhS2m7pYVcEvYaYlO55qHXBGbKumg.apk)**
 
 Open the link on your Android phone. When the download finishes, tap it to install, and allow "Install unknown apps" if Android asks. If Play Protect warns about an unknown app, tap **More details → Install anyway**.
 
