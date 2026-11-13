@@ -6,11 +6,13 @@ import { PlayerProvider } from './src/context/PlayerContext';
 import { CatalogProvider } from './src/context/CatalogContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import OpeningScreen from './src/components/OpeningScreen';
+import WebFrame from './src/components/WebFrame';
 
 export default function App() {
   const [opening, setOpening] = useState(true);
   return (
     <SafeAreaProvider>
+      <WebFrame>
       {/* Library (likes, playlists, downloads) wraps the player, because the
           player asks the library whether a song is saved offline. */}
       <LibraryProvider>
@@ -23,6 +25,7 @@ export default function App() {
       </LibraryProvider>
       {/* The app loads underneath while the opening screen plays. */}
       {opening && <OpeningScreen onDone={() => setOpening(false)} />}
+      </WebFrame>
     </SafeAreaProvider>
   );
 }

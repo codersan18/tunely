@@ -384,7 +384,13 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, '') || '/';
     try {
-      if (request.method === 'GET' && (path === '/songs' || path === '/')) return await listSongs();
+      if (request.method === 'GET' && (path === '/songs' || path === '/')) {
+        // The song list is public, so the web version of VibeRoom (any site) may read it.
+        // Admin routes send no CORS headers, so browsers can't call them from a web page.
+        const res = await listSongs();
+        res.headers.set('access-control-allow-origin', '*');
+        return res;
+      }
 
       if (path.startsWith('/admin/')) {
         if (!isAdmin(request)) {

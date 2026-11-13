@@ -9,6 +9,7 @@ import { useLibrary } from '../context/LibraryContext';
 import { useCatalog } from '../context/CatalogContext';
 import TrackRow from '../components/TrackRow';
 import Cover from '../components/Cover';
+import { CAN_DOWNLOAD } from '../utils/platform';
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -44,7 +45,7 @@ export default function HomeScreen({ navigation }) {
   const tiles = [
     { id: 'all', title: 'All songs', icon: 'musical-notes', from: '#2A5C3B' },
     { id: 'liked', title: 'Liked Songs', icon: 'heart', from: '#4B2BD6', count: liked.length },
-    { id: 'downloads', title: 'Downloaded', icon: 'arrow-down', from: '#0B5C44', count: downloadedTracks.length },
+    ...(CAN_DOWNLOAD ? [{ id: 'downloads', title: 'Downloaded', icon: 'arrow-down', from: '#0B5C44', count: downloadedTracks.length }] : []),
     ...playlists.slice(0, 3).map((p) => ({ id: p.id, title: p.title, artwork: p.tracks[0]?.artwork, icon: 'list' })),
   ];
 

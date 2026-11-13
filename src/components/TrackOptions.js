@@ -6,6 +6,7 @@ import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
 import Sheet, { SheetItem } from './Sheet';
 import NamePrompt from './NamePrompt';
+import { CAN_DOWNLOAD } from '../utils/platform';
 
 const toast = (msg) => (Platform.OS === 'android' ? ToastAndroid.show(msg, ToastAndroid.SHORT) : Alert.alert(msg));
 
@@ -60,13 +61,15 @@ export default function TrackOptions({ track, visible, onClose, playlistId }) {
             )}
             <SheetItem icon="play-forward-outline" label="Play next" onPress={() => { playNext(track); toast('Playing next'); close(); }} />
             <SheetItem icon="list-outline" label="Add to queue" onPress={() => { addToQueue(track); toast('Added to queue'); close(); }} />
-            <SheetItem
-              icon={downloaded ? 'checkmark-circle' : 'arrow-down-circle-outline'}
-              color={downloaded ? colors.accent : colors.text}
-              label={downloaded ? 'Remove download' : downloading ? 'Downloading…' : 'Download'}
-              onPress={downloading ? undefined : onDownload}
-              right={downloading ? <ActivityIndicator color={colors.accent} /> : null}
-            />
+            {CAN_DOWNLOAD && (
+              <SheetItem
+                icon={downloaded ? 'checkmark-circle' : 'arrow-down-circle-outline'}
+                color={downloaded ? colors.accent : colors.text}
+                label={downloaded ? 'Remove download' : downloading ? 'Downloading…' : 'Download'}
+                onPress={downloading ? undefined : onDownload}
+                right={downloading ? <ActivityIndicator color={colors.accent} /> : null}
+              />
+            )}
           </ScrollView>
         ) : (
           <ScrollView>

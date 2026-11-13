@@ -12,6 +12,7 @@ import TrackRow from '../components/TrackRow';
 import NamePrompt from '../components/NamePrompt';
 import Sheet, { SheetItem } from '../components/Sheet';
 import ShuffleButton from '../components/ShuffleButton';
+import { CAN_DOWNLOAD, confirmAction } from '../utils/platform';
 
 const formatMB = (bytes) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
@@ -105,10 +106,8 @@ export default function PlaylistScreen({ route, navigation }) {
 
   const onDelete = () => {
     setMenu(false);
-    Alert.alert('Delete playlist?', `"${playlist.title}" will be removed from your library.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => { navigation.goBack(); deletePlaylist(playlist.id); } },
-    ]);
+    confirmAction('Delete playlist?', `"${playlist.title}" will be removed from your library.`, 'Delete',
+      () => { navigation.goBack(); deletePlaylist(playlist.id); });
   };
 
   const header = (
@@ -129,7 +128,7 @@ export default function PlaylistScreen({ route, navigation }) {
       </Text>
       <View style={styles.actions}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>
-          {playlistId !== 'downloads' && (
+          {playlistId !== 'downloads' && CAN_DOWNLOAD && (
             <Pressable onPress={onDownloadAll} hitSlop={8}>
               {anyDownloading ? (
                 <ActivityIndicator color={colors.accent} />

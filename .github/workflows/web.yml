@@ -1,0 +1,50 @@
+# Builds the web version of VibeRoom (for listening on a computer) and puts it online
+# at https://viberoom.expo.app with EAS Hosting. Runs on every push to main.
+# Needs the EXPO_TOKEN repository secret. The phone app is not affected by this workflow.
+name: Publish web version
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'backend/**'
+      - 'scripts/**'
+      - '.github/workflows/optimize.yml'
+      - '.github/workflows/storage-alert.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: eas-web
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: npm ci
+
+      # The web packages are added only here, never to package.json. If they were in
+      # package.json, Expo would count "web" as an app platform, which changes the phone
+      # app's runtime version and would stop installed APKs from getting OTA updates.
+      - name: Add web packages (this build only)
+        run: npm install --no-save react-dom@19.3.0 react-native-web@0.21.4 @expo/metro-runtime@58.0.17
+
+      - name: Build the website
+        run: npx expo export --platform web
+
+      # --dev-domain only matters the first time: it picks the viberoom.expo.app address.
+      - name: Put it online
+        run: eas deploy --prod --non-interactive --dev-domain viberoom

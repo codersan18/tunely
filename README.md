@@ -8,6 +8,26 @@ Expo SDK 58 · React Native 0.88 · React Navigation 7 · expo-audio
 
 Open the link on your Android phone. When the download finishes, tap it to install, and allow "Install unknown apps" if Android asks. If Play Protect warns about an unknown app, tap **More details → Install anyway**.
 
+## Listen on a computer
+
+**[▶ Open VibeRoom in your browser](https://viberoom.expo.app)**
+
+It's the same app and the same song library, running in Chrome, Edge or any modern browser. A few things stay phone-only:
+- Offline downloads: the web version needs internet.
+- Managing and uploading songs.
+- Lock-screen controls. The browser's own media keys and controls still work.
+
+The website rebuilds itself on every push to `main` (`.github/workflows/web.yml`).
+
+To try the web version locally:
+
+```bash
+npm install --no-save react-dom@19.3.0 react-native-web@0.21.4 @expo/metro-runtime@58.0.17
+npx expo start --web
+```
+
+The web packages are kept out of `package.json` on purpose. With them listed there, Expo adds "web" to the app's platforms, which changes the phone app's runtime version and would cut installed APKs off from over-the-air updates.
+
 ## Features
 - **Your own music library** – songs you upload are stored online (Neon) and appear in every install of the app
 - **Manage songs (admin)** – Library → lock icon → admin password. Pick audio files, edit title / artist / album / genre, add a cover, upload. Songs already in the library are skipped (same file, or same title + artist). Remove songs from the Library tab.
@@ -86,7 +106,7 @@ Only upload music you own or have permission to share: everyone who installs the
 | You change | What happens |
 |---|---|
 | Songs (in the app's admin screen) | Live for everyone right away. |
-| App code (screens, design, features) | Push to `main`. GitHub Actions runs `eas update` and every installed app picks it up the next time it is opened. |
+| App code (screens, design, features) | Push to `main`. GitHub Actions runs `eas update`, and every installed app picks it up the next time it is opened. The website at viberoom.expo.app is rebuilt at the same time. |
 | Icon, name, splash, or a package with native code | Build a new APK (`npx eas-cli@latest build --profile preview --platform android`) and share the new link. |
 
 Updates use the `fingerprint` runtime version, so an update only reaches APKs with matching native code. Builds from before over-the-air updates were added (the first two) can't receive updates.

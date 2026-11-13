@@ -8,8 +8,9 @@ import { useLibrary } from '../context/LibraryContext';
 import { useCatalog } from '../context/CatalogContext';
 import NamePrompt from '../components/NamePrompt';
 import Cover from '../components/Cover';
+import { CAN_DOWNLOAD, CAN_MANAGE_SONGS } from '../utils/platform';
 
-const FILTERS = ['Playlists', 'Albums', 'Artists', 'Downloaded'];
+const FILTERS = ['Playlists', 'Albums', 'Artists', ...(CAN_DOWNLOAD ? ['Downloaded'] : [])];
 
 function GradientArt({ icon, from, to }) {
   return (
@@ -52,12 +53,14 @@ export default function LibraryScreen({ navigation }) {
         sub={`Playlist · ${liked.length} songs`}
         onPress={() => open('liked')}
       />
-      <Item
-        art={<GradientArt icon="arrow-down" from="#0B5C44" to="#2EE6A6" />}
-        title="Downloaded"
-        sub={`${downloadedTracks.length} songs · plays offline`}
-        onPress={() => open('downloads')}
-      />
+      {CAN_DOWNLOAD && (
+        <Item
+          art={<GradientArt icon="arrow-down" from="#0B5C44" to="#2EE6A6" />}
+          title="Downloaded"
+          sub={`${downloadedTracks.length} songs · plays offline`}
+          onPress={() => open('downloads')}
+        />
+      )}
     </View>
   );
 
@@ -143,9 +146,11 @@ export default function LibraryScreen({ navigation }) {
       <View style={styles.top}>
         <Text style={styles.h1}>Your Library</Text>
         <View style={styles.topIcons}>
-          <Pressable onPress={() => navigation.navigate('Admin')} hitSlop={10} accessibilityLabel="Manage songs">
-            <Ionicons name="lock-closed-outline" size={22} color={colors.textMuted} />
-          </Pressable>
+          {CAN_MANAGE_SONGS && (
+            <Pressable onPress={() => navigation.navigate('Admin')} hitSlop={10} accessibilityLabel="Manage songs">
+              <Ionicons name="lock-closed-outline" size={22} color={colors.textMuted} />
+            </Pressable>
+          )}
           <Pressable onPress={() => setNaming(true)} hitSlop={10} accessibilityLabel="Create playlist">
             <Ionicons name="add" size={30} color={colors.text} />
           </Pressable>
