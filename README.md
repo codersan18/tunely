@@ -4,9 +4,9 @@ Expo SDK 58 · React Native 0.88 · React Navigation 7 · expo-audio
 
 ## Download (Android)
 
-**[⬇ Download Tunely for Android](https://expo.dev/accounts/ashersan18s-team/projects/tunely/builds/3045cc46-0a07-48ba-8d68-37c39777303c)**
+**[⬇ Download Tunely for Android (APK)](https://expo.dev/artifacts/eas/Z_ZhDibKEwY_VJplcAN_ufp_5en-IW2TcCxhUt4txG4.apk)**
 
-Open the link on your Android phone (or scan its QR code), tap **Install**, and allow "Install unknown apps" if Android asks.
+Open the link on your Android phone. When the download finishes, tap it to install, and allow "Install unknown apps" if Android asks. If Play Protect warns about an unknown app, tap **More details → Install anyway**.
 
 ## Features
 - **Your own music library** – songs you upload are stored online (Neon) and appear in every install of the app
