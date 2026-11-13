@@ -14,7 +14,7 @@ const GENRE_COLORS = ['#7C3AED', '#0E7490', '#B45309', '#4D7C0F', '#BE185D', '#1
 const matches = (t, s) => [t.title, t.artist, t.album, t.genre, t.language, t.mood].some((f) => f && f.toLowerCase().includes(s));
 
 export default function SearchScreen({ navigation }) {
-  const { songs, artists, genres } = useCatalog();
+  const { songs, artists, albums, genres } = useCatalog();
   const { downloadedTracks } = useLibrary();
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
@@ -27,7 +27,10 @@ export default function SearchScreen({ navigation }) {
   const results = useMemo(() => (q ? all.filter((t) => matches(t, q)) : []), [all, q]);
   const artistHits = useMemo(() => (q ? artists.filter((a) => a.name.toLowerCase().includes(q)).slice(0, 5) : []), [artists, q]);
 
+  const albumHits = useMemo(() => (q ? albums.filter((a) => a.name.toLowerCase().includes(q)).slice(0, 5) : []), [albums, q]);
+
   const openArtist = (name) => navigation.navigate('Playlist', { playlistId: `artist:${name}` });
+  const openAlbum = (name) => navigation.navigate('Playlist', { playlistId: `album:${name}` });
   const openGenre = (name) => navigation.navigate('Playlist', { playlistId: `genre:${name}` });
 
   const browse = [
@@ -94,8 +97,17 @@ export default function SearchScreen({ navigation }) {
           keyExtractor={(t) => t.id}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 24 }}
-          ListHeaderComponent={artistHits.length > 0 && (
+          ListHeaderComponent={(artistHits.length > 0 || albumHits.length > 0) && (
             <View style={{ marginBottom: 8 }}>
+              {albumHits.map((a) => (
+                <Pressable key={`al-${a.name}`} onPress={() => openAlbum(a.name)} style={({ pressed }) => [styles.item, pressed && { opacity: 0.6 }]}>
+                  <Cover uri={a.artwork} seed={a.name} size={52} icon="disc" style={{ borderRadius: 4 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text numberOfLines={1} style={styles.itemTitle}>{a.name}</Text>
+                    <Text numberOfLines={1} style={styles.itemSub}>{['Album', a.artist].filter(Boolean).join(' · ')}</Text>
+                  </View>
+                </Pressable>
+              ))}
               {artistHits.map((a) => (
                 <Pressable key={a.name} onPress={() => openArtist(a.name)} style={({ pressed }) => [styles.item, pressed && { opacity: 0.6 }]}>
                   <Cover uri={a.artwork} seed={a.name} size={52} round icon="person" />
@@ -107,7 +119,7 @@ export default function SearchScreen({ navigation }) {
               ))}
             </View>
           )}
-          ListEmptyComponent={!artistHits.length && <Text style={styles.empty}>No songs match "{query.trim()}".</Text>}
+          ListEmptyComponent={!artistHits.length && !albumHits.length && <Text style={styles.empty}>No songs match "{query.trim()}".</Text>}
           renderItem={({ item }) => <TrackRow track={item} list={results} />}
         />
       )}

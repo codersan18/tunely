@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
@@ -9,7 +9,7 @@ import * as SecureStore from 'expo-secure-store';
 import { File } from 'expo-file-system';
 import { colors } from '../theme';
 import { useCatalog } from '../context/CatalogContext';
-import { verifyAdmin, uploadSong, deleteSong, updateSong } from '../api/catalog';
+import { verifyAdmin, uploadSong, deleteSong, updateSong, getStorage } from '../api/catalog';
 import Cover from '../components/Cover';
 import ChipPicker from '../components/ChipPicker';
 import { LANGUAGES, MOODS } from '../utils/smartShuffle';
@@ -162,6 +162,15 @@ export default function AdminScreen({ navigation }) {
     SecureStore.getItemAsync(KEY_NAME).then((k) => setAdminKey(k || null)).catch(() => setAdminKey(null));
   }, []);
 
+  // How full song storage is. Uploads stop at 90%.
+  const [storage, setStorage] = useState(null);
+  const loadStorage = useCallback(() => {
+    if (!adminKey) return;
+    getStorage(adminKey).then(setStorage).catch(() => {});
+  }, [adminKey]);
+  useEffect(() => { loadStorage(); }, [loadStorage, songs.length]);
+  const storageFull = !!storage?.full;
+
   const lock = async () => {
     await SecureStore.deleteItemAsync(KEY_NAME).catch(() => {});
     setAdminKey(null);
@@ -267,6 +276,7 @@ export default function AdminScreen({ navigation }) {
     }
     setUploading(false);
     if (added) refresh();
+    loadStorage();
   };
 
   const confirmDelete = (song) => {
@@ -317,6 +327,28 @@ export default function AdminScreen({ navigation }) {
 
           {tab === 'add' ? (
             <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+              {storage && (
+                <View style={styles.storage}>
+                  <View style={styles.storageRow}>
+                    <Text style={styles.storageLabel}>Song storage</Text>
+                    <Text style={[styles.storageLabel, storageFull && { color: colors.danger }]}>
+                      {(storage.used / 1e9).toFixed(2)} of {(storage.limit / 1e9).toFixed(0)} GB · {storage.percent}%
+                    </Text>
+                  </View>
+                  <View style={styles.storageBar}>
+                    <View style={[styles.storageFill, {
+                      width: `${Math.min(100, storage.percent)}%`,
+                      backgroundColor: storageFull ? colors.danger : storage.percent >= 75 ? '#FFB547' : colors.accent,
+                    }]} />
+                    <View style={styles.storageMark} />
+                  </View>
+                  {storageFull && (
+                    <Text style={styles.storageWarn}>
+                      Storage is 90% full, so uploads are paused. Delete songs in the Library tab to make room.
+                    </Text>
+                  )}
+                </View>
+              )}
               <Pressable onPress={pickSongs} style={styles.pick} disabled={uploading || preparing}>
                 {preparing ? <ActivityIndicator color={colors.accent} /> : <Ionicons name="add-circle-outline" size={26} color={colors.accent} />}
                 <Text style={styles.pickText}>{preparing ? 'Reading files...' : 'Choose audio files'}</Text>
@@ -394,8 +426,8 @@ export default function AdminScreen({ navigation }) {
               {items.length > 0 && (
                 <Pressable
                   onPress={uploadAll}
-                  disabled={uploading || !pending.length}
-                  style={[styles.primary, { alignSelf: 'stretch', marginTop: 8 }, (uploading || !pending.length) && { opacity: 0.5 }]}
+                  disabled={uploading || !pending.length || storageFull}
+                  style={[styles.primary, { alignSelf: 'stretch', marginTop: 8 }, (uploading || !pending.length || storageFull) && { opacity: 0.5 }]}
                 >
                   {uploading ? <ActivityIndicator color={colors.bg} /> : (
                     <Text style={styles.primaryText}>
@@ -470,6 +502,13 @@ const styles = StyleSheet.create({
   body: { padding: 16, paddingBottom: 48, gap: 12 },
   pick: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 18, borderRadius: 10, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.accent },
   pickText: { color: colors.accent, fontSize: 15, fontWeight: '700' },
+  storage: { gap: 6 },
+  storageRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  storageLabel: { color: colors.textMuted, fontSize: 12 },
+  storageBar: { height: 6, borderRadius: 3, backgroundColor: colors.surfaceHigh, overflow: 'hidden' },
+  storageFill: { height: 6, borderRadius: 3 },
+  storageMark: { position: 'absolute', left: '90%', top: 0, bottom: 0, width: 2, backgroundColor: colors.textDim }, // the 90% stop
+  storageWarn: { color: colors.danger, fontSize: 12, lineHeight: 17 },
   hint: { color: colors.textMuted, fontSize: 13, lineHeight: 18 },
   card: { backgroundColor: colors.surface, borderRadius: 10, padding: 12, gap: 8 },
   cardDup: { borderWidth: 1, borderColor: colors.danger },

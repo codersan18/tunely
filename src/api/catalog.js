@@ -61,6 +61,11 @@ export function deleteSong(adminKey, songId) {
   return request(`/admin/songs/${songId}`, { method: 'DELETE', adminKey });
 }
 
+// How full song storage is: { used, limit, percent, full }. Uploads are blocked when full (90%).
+export function getStorage(adminKey) {
+  return request('/admin/storage', { adminKey });
+}
+
 // Change a song's details. Only the fields given are changed.
 export async function updateSong(adminKey, songId, fields) {
   const { song } = await request(`/admin/songs/${songId}`, { method: 'PATCH', adminKey, body: fields });

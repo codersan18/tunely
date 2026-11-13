@@ -37,7 +37,7 @@ function Carousel({ title, data, renderItem, keyExtractor }) {
 export default function HomeScreen({ navigation }) {
   const { playTrack } = usePlayer();
   const { recent, liked, downloadedTracks, playlists } = useLibrary();
-  const { songs, artists, status, refreshing, refresh } = useCatalog();
+  const { songs, artists, albums, status, refreshing, refresh } = useCatalog();
   const open = (playlistId) => navigation.navigate('Playlist', { playlistId });
 
   // Quick-access tiles: the user's own collections.
@@ -100,6 +100,20 @@ export default function HomeScreen({ navigation }) {
 
       <Carousel title="Jump back in" data={jumpBack} keyExtractor={(t) => t.id} renderItem={songCard(jumpBack, true)} />
       <Carousel title="Recently added" data={newest} keyExtractor={(t) => t.id} renderItem={songCard(newest)} />
+      <Carousel
+        title="Albums"
+        data={albums.slice(0, 15)}
+        keyExtractor={(a) => a.name}
+        renderItem={({ item }) => (
+          <Pressable onPress={() => open(`album:${item.name}`)} style={styles.card}>
+            <Cover uri={item.artwork} seed={item.name} size={140} icon="disc" style={{ borderRadius: 6 }} />
+            <Text numberOfLines={1} style={styles.cardTitle}>{item.name}</Text>
+            <Text numberOfLines={1} style={styles.cardSub}>
+              {[item.artist, `${item.count} ${item.count === 1 ? 'song' : 'songs'}`].filter(Boolean).join(' · ')}
+            </Text>
+          </Pressable>
+        )}
+      />
       <Carousel
         title="Artists"
         data={artists.slice(0, 15)}

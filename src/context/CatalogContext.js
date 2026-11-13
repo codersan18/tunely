@@ -48,17 +48,39 @@ export function CatalogProvider({ children }) {
 
   const refresh = useCallback(() => load(true), [load]);
 
-  // Artists and genres, built from the songs.
+  // Artists, albums and genres, built from the songs.
+  // A song by "Sushin Shyam, Vaasi" counts for both artists.
   const artists = useMemo(() => {
     const map = new Map();
     songs.forEach((s) => {
-      const key = s.artist.toLowerCase();
-      const a = map.get(key) || { name: s.artist, artwork: null, count: 0 };
-      a.count += 1;
-      if (!a.artwork && s.artwork) a.artwork = s.artwork;
-      map.set(key, a);
+      splitArtists(s.artist).forEach((name) => {
+        const key = name.toLowerCase();
+        const a = map.get(key) || { name, artwork: null, count: 0 };
+        a.count += 1;
+        if (!a.artwork && s.artwork) a.artwork = s.artwork;
+        map.set(key, a);
+      });
     });
     return [...map.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [songs]);
+
+  // Albums, newest first. The album's artist is the one on most of its songs.
+  const albums = useMemo(() => {
+    const map = new Map();
+    songs.forEach((s) => {
+      if (!s.album) return;
+      const key = s.album.toLowerCase();
+      const a = map.get(key) || { name: s.album, artwork: null, count: 0, latest: '', byArtist: new Map() };
+      a.count += 1;
+      if (!a.artwork && s.artwork) a.artwork = s.artwork;
+      if ((s.createdAt || '') > a.latest) a.latest = s.createdAt || '';
+      const lead = splitArtists(s.artist)[0];
+      if (lead) a.byArtist.set(lead, (a.byArtist.get(lead) || 0) + 1);
+      map.set(key, a);
+    });
+    return [...map.values()]
+      .map(({ byArtist, ...a }) => ({ ...a, artist: [...byArtist.entries()].sort((x, y) => y[1] - x[1])[0]?.[0] || '' }))
+      .sort((a, b) => (b.latest > a.latest ? 1 : b.latest < a.latest ? -1 : a.name.localeCompare(b.name)));
   }, [songs]);
 
   const genres = useMemo(() => {
@@ -71,10 +93,18 @@ export function CatalogProvider({ children }) {
     return [...map.values()].sort((a, b) => b.count - a.count);
   }, [songs]);
 
-  const value = useMemo(() => ({ songs, artists, genres, status, refreshing, refresh }),
-    [songs, artists, genres, status, refreshing, refresh]);
+  const value = useMemo(() => ({ songs, artists, albums, genres, status, refreshing, refresh }),
+    [songs, artists, albums, genres, status, refreshing, refresh]);
   return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>;
 }
+
+// "Sushin Shyam, Vaasi" / "A & B" / "A feat. B" -> ['Sushin Shyam', 'Vaasi']
+export function splitArtists(artist) {
+  return (artist || '').split(/\s*,\s*|\s+&\s+|\s+(?:feat\.?|ft\.?)\s+/i).map((a) => a.trim()).filter(Boolean);
+}
+
+// Does this song feature the named artist?
+export const hasArtist = (track, name) => splitArtists(track.artist).some((a) => a.toLowerCase() === name.toLowerCase());
 
 export function useCatalog() {
   const ctx = useContext(CatalogContext);

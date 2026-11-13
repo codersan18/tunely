@@ -9,7 +9,7 @@ import { useCatalog } from '../context/CatalogContext';
 import NamePrompt from '../components/NamePrompt';
 import Cover from '../components/Cover';
 
-const FILTERS = ['Playlists', 'Downloaded', 'Artists'];
+const FILTERS = ['Playlists', 'Albums', 'Artists', 'Downloaded'];
 
 function GradientArt({ icon, from, to }) {
   return (
@@ -33,7 +33,7 @@ function Item({ art, title, sub, onPress }) {
 
 export default function LibraryScreen({ navigation }) {
   const { liked, playlists, downloadedTracks, createPlaylist } = useLibrary();
-  const { songs, artists } = useCatalog();
+  const { songs, artists, albums } = useCatalog();
   const [filter, setFilter] = useState('Playlists');
   const [naming, setNaming] = useState(false);
   const open = (playlistId) => navigation.navigate('Playlist', { playlistId });
@@ -81,6 +81,23 @@ export default function LibraryScreen({ navigation }) {
             title={p.title}
             sub={`Playlist · ${p.tracks.length} songs`}
             onPress={() => open(p.id)}
+          />
+        )}
+      />
+    );
+  } else if (filter === 'Albums') {
+    content = (
+      <FlatList
+        data={albums}
+        keyExtractor={(a) => a.name}
+        contentContainerStyle={styles.list}
+        ListEmptyComponent={<Text style={styles.empty}>Albums show up here once songs have an album name.</Text>}
+        renderItem={({ item }) => (
+          <Item
+            art={<Cover uri={item.artwork} seed={item.name} icon="disc" style={styles.art} />}
+            title={item.name}
+            sub={['Album', item.artist, `${item.count} ${item.count === 1 ? 'song' : 'songs'}`].filter(Boolean).join(' · ')}
+            onPress={() => open(`album:${item.name}`)}
           />
         )}
       />

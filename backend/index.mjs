@@ -8,6 +8,7 @@
 //   POST   /admin/songs           -> save the song after the files are uploaded
 //   PATCH  /admin/songs/:id       -> edit a song's details (title, artist, album, genre, language, mood)
 //   DELETE /admin/songs/:id       -> remove a song and its files
+//   GET    /admin/storage         -> how full object storage is; uploads stop at 90%
 // Song compression (run by .github/workflows/optimize.yml):
 //   GET    /admin/optimize/pending        -> songs not yet compressed
 //   POST   /admin/optimize/:id/prepare    -> upload URLs for the compressed audio (+ cover found in the file)
@@ -67,16 +68,18 @@ async function sql(query, params = []) {
 
 const encodeKey = (key) => key.split('/').map((p) => encodeURIComponent(p)).join('/');
 
-function presign(method, key, expires = UPLOAD_URL_TTL) {
+// key '' signs a request on the bucket itself (e.g. listing); extra = additional query parameters.
+function presign(method, key, expires = UPLOAD_URL_TTL, extra = {}) {
   const endpoint = new URL(process.env.AWS_ENDPOINT_URL_S3);
   const region = process.env.AWS_REGION;
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
   const day = amzDate.slice(0, 8);
   const scope = `${day}/${region}/s3/aws4_request`;
-  const path = `/${BUCKET}/${encodeKey(key)}`;
+  const path = key ? `/${BUCKET}/${encodeKey(key)}` : `/${BUCKET}`;
 
   const q = {
+    ...extra,
     'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
     'X-Amz-Credential': `${process.env.AWS_ACCESS_KEY_ID}/${scope}`,
     'X-Amz-Date': amzDate,
@@ -95,6 +98,36 @@ function presign(method, key, expires = UPLOAD_URL_TTL) {
   k = hmac(k, 'aws4_request');
   const signature = createHmac('sha256', k).update(toSign).digest('hex');
   return `${endpoint.origin}${path}?${query}&X-Amz-Signature=${signature}`;
+}
+
+// ---------- storage usage ----------
+
+// Free plan object storage is 5 GB per project. Uploads stop at 90% so there's always room
+// for the compression job (it writes the small copy before deleting the original).
+const STORAGE_LIMIT_BYTES = Number(process.env.STORAGE_LIMIT_BYTES) || 5e9;
+const STORAGE_STOP_AT = 0.9;
+
+// Total size of everything in the bucket, straight from storage (the Neon dashboard lags).
+async function storageUsed() {
+  let total = 0;
+  let objects = 0;
+  let token = null;
+  for (let page = 0; page < 200; page += 1) {
+    const extra = { 'list-type': '2', 'max-keys': '1000' };
+    if (token) extra['continuation-token'] = token;
+    const res = await fetch(presign('GET', '', 60, extra));
+    const xml = await res.text();
+    if (!res.ok) throw new Error(`storage listing failed (${res.status}): ${xml.slice(0, 200)}`);
+    for (const m of xml.matchAll(/<Size>(\d+)<\/Size>/g)) { total += Number(m[1]); objects += 1; }
+    token = xml.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/)?.[1];
+    if (!/<IsTruncated>true<\/IsTruncated>/.test(xml) || !token) break;
+  }
+  return { used: total, objects, limit: STORAGE_LIMIT_BYTES, stopAt: STORAGE_STOP_AT };
+}
+
+async function storageStatus() {
+  const s = await storageUsed();
+  return json(200, { ...s, percent: Math.round((s.used / s.limit) * 1000) / 10, full: s.used >= s.limit * s.stopAt });
 }
 
 // Bucket is public_read, so files are readable at a plain URL.
@@ -168,6 +201,21 @@ async function prepare(body) {
 
   const dup = await findDuplicate(hash, title, artist);
   if (dup) return duplicateResponse(dup);
+
+  // Stop new uploads once storage is 90% full (counting this file).
+  const store = await storageUsed();
+  const incoming = Number(body.size) || 0;
+  if (store.used + incoming >= store.limit * store.stopAt) {
+    const pct = Math.round((store.used / store.limit) * 100);
+    const size = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(2)} GB` : `${(b / 1e6).toFixed(1)} MB`);
+    return json(507, {
+      error: 'storage_full',
+      message: `Storage is ${pct}% full (${size(store.used)} of ${size(store.limit)}). `
+        + 'New uploads are paused at 90%. Delete some songs to make room.',
+      used: store.used,
+      limit: store.limit,
+    });
+  }
 
   const audioKey = `audio/${hash}.${ext}`;
   const out = { audioKey, audioUploadUrl: presign('PUT', audioKey) };
@@ -346,6 +394,7 @@ export default {
         if (request.method === 'POST' && path === '/admin/verify') return json(200, { ok: true });
         if (request.method === 'POST' && path === '/admin/prepare') return await prepare(await request.json());
         if (request.method === 'POST' && path === '/admin/songs') return await saveSong(await request.json());
+        if (request.method === 'GET' && path === '/admin/storage') return await storageStatus();
         if (request.method === 'GET' && path === '/admin/optimize/pending') return await optimizePending();
         const o = path.match(/^\/admin\/optimize\/([^/]+)\/(prepare|done)$/);
         if (request.method === 'POST' && o) {

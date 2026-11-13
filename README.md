@@ -98,3 +98,7 @@ The workflow (`.github/workflows/update.yml`) needs an Expo access token saved a
 Uploaded songs are compressed automatically by `.github/workflows/optimize.yml` (every 15 minutes, or run it by hand from the Actions tab). Audio above 160 kbps is re-encoded to AAC 128 kbps `.m4a` (a 320 kbps MP3 becomes about 60% smaller), the cover embedded in the file is used if the song has none, and the song length is filled in. The original file is then deleted. The duplicate check still uses the original file's fingerprint.
 
 Needs the `VIBEROOM_ADMIN_KEY` repository secret (the admin password). To run it yourself: `ADMIN_KEY=... node scripts/optimize-songs.mjs` with `ffmpeg` installed.
+
+## Storage limit
+
+The Neon Free plan includes 5 GB of object storage. The backend measures the bucket directly and **refuses new uploads at 90%** (the upload screen shows a storage bar and disables Upload). `.github/workflows/storage-alert.yml` checks every 3 hours and, at 90%, opens a GitHub issue assigned to the repo owner, which GitHub emails to you; the issue closes itself once usage drops. Set `STORAGE_LIMIT_BYTES` on the Neon Function if the plan changes.

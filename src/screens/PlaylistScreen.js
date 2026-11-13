@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
-import { useCatalog } from '../context/CatalogContext';
+import { useCatalog, hasArtist } from '../context/CatalogContext';
 import Cover from '../components/Cover';
 import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
@@ -22,7 +22,7 @@ export default function PlaylistScreen({ route, navigation }) {
     liked, playlists, downloadedTracks, downloadedBytes, deletePlaylist, renamePlaylist,
     isDownloaded, isDownloading, downloadMany, removeDownload,
   } = useLibrary();
-  const { songs, artists, status } = useCatalog();
+  const { songs, artists, albums, status } = useCatalog();
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
 
@@ -50,7 +50,19 @@ export default function PlaylistScreen({ route, navigation }) {
       const artist = artists.find((x) => x.name.toLowerCase() === name.toLowerCase());
       return {
         id: playlistId, title: name, description: 'Artist', color: '#4A2A5C', icon: 'person', round: true,
-        artwork: artist?.artwork, tracks: songs.filter((t) => t.artist.toLowerCase() === name.toLowerCase()),
+        artwork: artist?.artwork, tracks: songs.filter((t) => hasArtist(t, name)),
+      };
+    }
+    if (playlistId.startsWith('album:')) {
+      const name = playlistId.slice('album:'.length);
+      const album = albums.find((x) => x.name.toLowerCase() === name.toLowerCase());
+      // Oldest upload first, which is usually track order when an album is uploaded in one go.
+      const tracks = songs.filter((t) => t.album && t.album.toLowerCase() === name.toLowerCase())
+        .sort((a, b) => ((a.createdAt || '') < (b.createdAt || '') ? -1 : 1));
+      return {
+        id: playlistId, title: album?.name || name, color: '#5C3A1F', icon: 'disc',
+        description: ['Album', album?.artist].filter(Boolean).join(' · '),
+        artwork: album?.artwork, tracks,
       };
     }
     if (playlistId.startsWith('genre:')) {
@@ -61,7 +73,7 @@ export default function PlaylistScreen({ route, navigation }) {
       };
     }
     return null;
-  }, [playlistId, isUser, songs, artists, liked, playlists, downloadedTracks, downloadedBytes]);
+  }, [playlistId, isUser, songs, artists, albums, liked, playlists, downloadedTracks, downloadedBytes]);
 
   if (!playlist) {
     // e.g. the playlist was just deleted

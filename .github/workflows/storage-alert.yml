@@ -1,0 +1,54 @@
+# Emails the repo owner when song storage reaches 90%.
+# Every 3 hours it asks the backend how full object storage is. At 90% or more it opens an issue
+# assigned to the owner (GitHub emails new assigned issues); once usage drops below 90% the issue
+# is closed again. Uploads themselves are blocked at 90% by the backend.
+# Needs the VIBEROOM_ADMIN_KEY repository secret.
+name: Storage alert
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check storage and alert
+        env:
+          ADMIN_KEY: ${{ secrets.VIBEROOM_ADMIN_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ADMIN_KEY" ]; then echo "VIBEROOM_ADMIN_KEY secret is not set"; exit 1; fi
+          s=$(curl -sf -H "x-admin-key: $ADMIN_KEY" \
+            https://br-polished-mud-azcthrf7-api.compute.c-3.ap-southeast-1.aws.neon.tech/admin/storage)
+          read -r pct full used limit objects < <(echo "$s" | node -e "
+            let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);
+            console.log(j.percent, j.full, (j.used/1e9).toFixed(2), (j.limit/1e9).toFixed(0), j.objects)})")
+          echo "Storage: ${pct}% (${used} GB of ${limit} GB, ${objects} files)"
+
+          open=$(gh issue list --repo "$REPO" --label storage-alert --state open --json number --jq '.[0].number // empty')
+          if [ "$full" = "true" ]; then
+            if [ -z "$open" ]; then
+              gh label create storage-alert --repo "$REPO" --color D93F0B --description "Song storage is nearly full" --force
+              gh issue create --repo "$REPO" --label storage-alert --assignee "$OWNER" \
+                --title "VibeRoom storage is ${pct}% full - uploads are paused" \
+                --body "Song storage is at **${pct}%** (${used} GB of ${limit} GB, ${objects} files).
+
+          New uploads are blocked at 90% so the library can't run out of space.
+
+          To make room: open the app → Library → lock icon → Manage songs → Library, and delete songs you no longer need. Or move the Neon project to a paid plan and raise the limit.
+
+          This issue closes itself once usage is back under 90%."
+            else
+              echo "Alert already open (#$open)."
+            fi
+          elif [ -n "$open" ]; then
+            gh issue close "$open" --repo "$REPO" --comment "Storage is back to ${pct}% (${used} GB of ${limit} GB). Uploads are allowed again."
+          fi

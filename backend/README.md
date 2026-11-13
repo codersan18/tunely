@@ -17,6 +17,7 @@ in the Neon project **tunely** (`round-pond-23269926`, branch `main` = `br-polis
 | POST | `/admin/songs` | admin | save the song once the file is uploaded |
 | PATCH | `/admin/songs/:id` | admin | edit title, artist, album, genre, language, mood |
 | DELETE | `/admin/songs/:id` | admin | remove a song and its files |
+| GET | `/admin/storage` | admin | how full object storage is (uploads stop at 90%) |
 | GET | `/admin/optimize/pending` | admin | songs not yet compressed |
 | POST | `/admin/optimize/:id/prepare` | admin | upload URLs for the compressed file and embedded cover |
 | POST | `/admin/optimize/:id/done` | admin | switch to the compressed file, delete the original |
