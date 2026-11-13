@@ -1,21 +1,14 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { File, Directory, Paths } from 'expo-file-system';
+import { saveSong, restore, removeSaved, deleteLocal } from '../utils/offline';
 
 // Everything the user owns: liked songs, their playlists and offline downloads.
 // Saved to the phone with AsyncStorage so it survives app restarts.
+// Offline song files are handled by utils/offline.js (phone) / offline.web.js (browser).
 
 const STORAGE_KEY = 'tunely:library:v2';
 const OLD_STORAGE_KEY = 'tunely:library:v1';
 const LibraryContext = createContext(null);
-
-const downloadsDir = () => {
-  const dir = new Directory(Paths.document, 'downloads');
-  if (!dir.exists) dir.create({ intermediates: true, idempotent: true });
-  return dir;
-};
-
-const safeName = (id) => id.replace(/[^a-zA-Z0-9_-]/g, '_');
 
 export function LibraryProvider({ children }) {
   const [ready, setReady] = useState(false);
@@ -33,9 +26,7 @@ export function LibraryProvider({ children }) {
         const old = await AsyncStorage.getItem(OLD_STORAGE_KEY);
         if (old) {
           Object.values(JSON.parse(old).downloads || {}).forEach((d) => {
-            [d.uri, d.track?.artwork].forEach((u) => {
-              try { if (u && !u.startsWith('http')) { const f = new File(u); if (f.exists) f.delete(); } } catch (e) { /* ignore */ }
-            });
+            [d.uri, d.track?.artwork].forEach(deleteLocal);
           });
           await AsyncStorage.removeItem(OLD_STORAGE_KEY);
         }
@@ -53,9 +44,10 @@ export function LibraryProvider({ children }) {
           setRecent(saved.recent || []);
           // Drop download entries whose file has gone missing.
           const ok = {};
-          Object.entries(saved.downloads || {}).forEach(([id, d]) => {
-            try { if (new File(d.uri).exists) ok[id] = d; } catch (e) { /* skip */ }
-          });
+          await Promise.all(Object.entries(saved.downloads || {}).map(async ([id, d]) => {
+            const entry = await restore(d);
+            if (entry) ok[id] = entry;
+          }));
           setDownloads(ok);
         }
       } catch (e) {
@@ -132,21 +124,8 @@ export function LibraryProvider({ children }) {
     if (typeof track.url !== 'string') return; // bundled files are already offline
     setDownloading((d) => ({ ...d, [track.id]: true }));
     try {
-      const target = new File(downloadsDir(), `${safeName(track.id)}.mp3`);
-      const file = await File.downloadFileAsync(track.url, target, { idempotent: true });
-      let size = 0;
-      try { size = file.info().size || 0; } catch (e) { /* ignore */ }
-      // Save the cover art too, so the song looks right with no internet.
-      let saved = track;
-      if (typeof track.artwork === 'string' && track.artwork.startsWith('http')) {
-        try {
-          const artTarget = new File(downloadsDir(), `${safeName(track.id)}.jpg`);
-          const art = await File.downloadFileAsync(track.artwork, artTarget, { idempotent: true });
-          saved = { ...track, artwork: art.uri, remoteArtwork: track.artwork };
-          try { size += art.info().size || 0; } catch (e) { /* ignore */ }
-        } catch (e) { /* keep the online artwork */ }
-      }
-      setDownloads((d) => ({ ...d, [track.id]: { track: saved, uri: file.uri, size } }));
+      const entry = await saveSong(track);
+      setDownloads((d) => ({ ...d, [track.id]: entry }));
     } catch (e) {
       console.warn('Download failed', track.title, e);
       throw e;
@@ -168,13 +147,7 @@ export function LibraryProvider({ children }) {
 
   const removeDownload = useCallback((id) => {
     const entry = downloadsRef.current[id];
-    if (entry) {
-      try { const f = new File(entry.uri); if (f.exists) f.delete(); } catch (e) { /* ignore */ }
-      try {
-        const art = entry.track.artwork;
-        if (art && !art.startsWith('http')) { const f = new File(art); if (f.exists) f.delete(); }
-      } catch (e) { /* ignore */ }
-    }
+    if (entry) removeSaved(entry);
     setDownloads((d) => {
       const n = { ...d };
       delete n[id];

@@ -1,7 +1,7 @@
 // Tunely's own song library, served by the Neon Function in /backend.
 // Everyone who installs the app sees the same songs; only the admin can add or remove them.
 
-import { File } from 'expo-file-system';
+import { uploadFile } from '../utils/files';
 
 export const API_URL = 'https://br-polished-mud-azcthrf7-api.compute.c-3.ap-southeast-1.aws.neon.tech';
 
@@ -75,7 +75,8 @@ export async function updateSong(adminKey, songId, fields) {
 const extOf = (name = '') => (name.match(/\.([a-z0-9]+)$/i)?.[1] || '').toLowerCase();
 
 // Uploads one song. Throws an error with .duplicate = true if it already exists.
-// item: { uri, name, mimeType, size, hash, title, artist, album, genre, cover?: { uri, name, mimeType } }
+// item: { uri, file?, name, mimeType, size, hash, title, artist, album, genre, cover?: { uri, file?, name, mimeType } }
+// (file is the browser File object, only on the web)
 export async function uploadSong(adminKey, item, onStage = () => {}) {
   onStage('Checking');
   const prep = await request('/admin/prepare', {
@@ -95,19 +96,13 @@ export async function uploadSong(adminKey, item, onStage = () => {}) {
   });
 
   onStage('Uploading');
-  const audio = await new File(item.uri).upload(prep.audioUploadUrl, {
-    httpMethod: 'PUT',
-    headers: { 'content-type': item.mimeType || 'audio/mpeg' },
-  });
-  if (audio.status >= 300) throw new Error(`Upload failed (${audio.status})`);
+  const audio = await uploadFile(item, prep.audioUploadUrl, item.mimeType || 'audio/mpeg');
+  if (audio >= 300) throw new Error(`Upload failed (${audio})`);
 
   if (item.cover && prep.artworkUploadUrl) {
     onStage('Uploading cover');
-    const art = await new File(item.cover.uri).upload(prep.artworkUploadUrl, {
-      httpMethod: 'PUT',
-      headers: { 'content-type': item.cover.mimeType || 'image/jpeg' },
-    });
-    if (art.status >= 300) throw new Error(`Cover upload failed (${art.status})`);
+    const art = await uploadFile(item.cover, prep.artworkUploadUrl, item.cover.mimeType || 'image/jpeg');
+    if (art >= 300) throw new Error(`Cover upload failed (${art})`);
   }
 
   onStage('Saving');

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, FlatList, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,7 +12,7 @@ import TrackRow from '../components/TrackRow';
 import NamePrompt from '../components/NamePrompt';
 import Sheet, { SheetItem } from '../components/Sheet';
 import ShuffleButton from '../components/ShuffleButton';
-import { CAN_DOWNLOAD, confirmAction } from '../utils/platform';
+import { confirmAction } from '../utils/platform';
 
 const formatMB = (bytes) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
@@ -95,10 +95,8 @@ export default function PlaylistScreen({ route, navigation }) {
   const onDownloadAll = () => {
     if (anyDownloading || !list.length) return;
     if (allDownloaded) {
-      Alert.alert('Remove downloads?', 'These songs will no longer play offline.', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: () => list.forEach((t) => removeDownload(t.id)) },
-      ]);
+      confirmAction('Remove downloads?', 'These songs will no longer play offline.', 'Remove',
+        () => list.forEach((t) => removeDownload(t.id)));
     } else {
       downloadMany(list.filter((t) => !isDownloaded(t.id)));
     }
@@ -128,7 +126,7 @@ export default function PlaylistScreen({ route, navigation }) {
       </Text>
       <View style={styles.actions}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>
-          {playlistId !== 'downloads' && CAN_DOWNLOAD && (
+          {playlistId !== 'downloads' && (
             <Pressable onPress={onDownloadAll} hitSlop={8}>
               {anyDownloading ? (
                 <ActivityIndicator color={colors.accent} />

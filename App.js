@@ -7,6 +7,9 @@ import { CatalogProvider } from './src/context/CatalogContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import OpeningScreen from './src/components/OpeningScreen';
 import WebFrame from './src/components/WebFrame';
+import registerServiceWorker from './src/utils/serviceWorker';
+
+registerServiceWorker(); // web only; does nothing on the phone
 
 export default function App() {
   const [opening, setOpening] = useState(true);

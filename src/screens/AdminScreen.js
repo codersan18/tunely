@@ -1,19 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, TextInput, Pressable, StyleSheet, ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+  View, Text, TextInput, Pressable, StyleSheet, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import * as SecureStore from 'expo-secure-store';
-import { File } from 'expo-file-system';
 import { colors } from '../theme';
 import { useCatalog } from '../context/CatalogContext';
 import { verifyAdmin, uploadSong, deleteSong, updateSong, getStorage } from '../api/catalog';
 import Cover from '../components/Cover';
 import ChipPicker from '../components/ChipPicker';
 import { LANGUAGES, MOODS } from '../utils/smartShuffle';
-import { readTags } from '../utils/readTags';
+import { keyStore, fileHash, fileTags } from '../utils/files';
+import { confirmAction, notify } from '../utils/platform';
 
 const KEY_NAME = 'tunely.adminKey';
 
@@ -60,7 +59,7 @@ function Unlock({ onUnlocked }) {
     setError(null);
     try {
       if (await verifyAdmin(key.trim())) {
-        await SecureStore.setItemAsync(KEY_NAME, key.trim());
+        await keyStore.set(KEY_NAME, key.trim());
         onUnlocked(key.trim());
       } else {
         setError('Wrong password.');
@@ -159,7 +158,7 @@ export default function AdminScreen({ navigation }) {
   const untagged = songs.filter((s) => !s.language || !s.mood).length;
 
   useEffect(() => {
-    SecureStore.getItemAsync(KEY_NAME).then((k) => setAdminKey(k || null)).catch(() => setAdminKey(null));
+    keyStore.get(KEY_NAME).then((k) => setAdminKey(k || null)).catch(() => setAdminKey(null));
   }, []);
 
   // How full song storage is. Uploads stop at 90%.
@@ -172,7 +171,7 @@ export default function AdminScreen({ navigation }) {
   const storageFull = !!storage?.full;
 
   const lock = async () => {
-    await SecureStore.deleteItemAsync(KEY_NAME).catch(() => {});
+    await keyStore.remove(KEY_NAME).catch(() => {});
     setAdminKey(null);
     setItems([]);
   };
@@ -206,17 +205,18 @@ export default function AdminScreen({ navigation }) {
       for (const a of res.assets) {
         let hash = null;
         try {
-          hash = await new File(a.uri).digest('SHA-256');
+          hash = await fileHash(a);
         } catch (e) {
           continue; // unreadable file
         }
         const guess = guessFromName(a.name);
         // Details stored inside the file (title, artists, album, genre, cover) beat guessing from the name.
         let tags = null;
-        try { tags = await readTags(a.uri); } catch (e) { /* not an MP3 or unreadable tags */ }
+        try { tags = await fileTags(a); } catch (e) { /* not an MP3 or unreadable tags */ }
         added.push({
           id: `i${++itemCounter}`,
           uri: a.uri,
+          file: a.file, // browser File (web only)
           name: a.name,
           mimeType: a.mimeType,
           size: a.size,
@@ -243,7 +243,7 @@ export default function AdminScreen({ navigation }) {
     const res = await DocumentPicker.getDocumentAsync({ type: ['image/jpeg', 'image/png', 'image/webp'], copyToCacheDirectory: true });
     if (res.canceled || !res.assets?.[0]) return;
     const a = res.assets[0];
-    update(id, { cover: { uri: a.uri, name: a.name, mimeType: a.mimeType } });
+    update(id, { cover: { uri: a.uri, file: a.file, name: a.name, mimeType: a.mimeType } });
   };
 
   const pending = items.filter((it) => it.status !== 'done' && !duplicateOf(it) && it.title.trim());
@@ -280,21 +280,15 @@ export default function AdminScreen({ navigation }) {
   };
 
   const confirmDelete = (song) => {
-    Alert.alert('Remove song?', `"${song.title}" will be removed for everyone. People who downloaded it keep their copy.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteSong(adminKey, song.songId);
-            refresh();
-          } catch (e) {
-            Alert.alert("Couldn't remove", e.message);
-          }
-        },
-      },
-    ]);
+    confirmAction('Remove song?', `"${song.title}" will be removed for everyone. People who downloaded it keep their copy.`, 'Remove',
+      async () => {
+        try {
+          await deleteSong(adminKey, song.songId);
+          refresh();
+        } catch (e) {
+          notify("Couldn't remove", e.message);
+        }
+      });
   };
 
   return (

@@ -379,18 +379,22 @@ async function deleteSong(id) {
   return json(200, { deleted: id });
 }
 
-export default {
-  async fetch(request) {
+// The web version of VibeRoom calls this API from a browser, which needs CORS headers.
+// Admin routes still need the admin password in the x-admin-key header (no cookies are used,
+// so allowing any origin doesn't let other sites act as the admin).
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+  'access-control-allow-headers': 'content-type, x-admin-key',
+  'access-control-max-age': '86400',
+};
+
+async function route(request) {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, '') || '/';
     try {
-      if (request.method === 'GET' && (path === '/songs' || path === '/')) {
-        // The song list is public, so the web version of VibeRoom (any site) may read it.
-        // Admin routes send no CORS headers, so browsers can't call them from a web page.
-        const res = await listSongs();
-        res.headers.set('access-control-allow-origin', '*');
-        return res;
-      }
+      if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
+      if (request.method === 'GET' && (path === '/songs' || path === '/')) return await listSongs();
 
       if (path.startsWith('/admin/')) {
         if (!isAdmin(request)) {
@@ -415,5 +419,12 @@ export default {
       console.error(e);
       return json(500, { error: 'server_error', message: 'Something went wrong on the server.' });
     }
+}
+
+export default {
+  async fetch(request) {
+    const res = await route(request);
+    for (const [k, v] of Object.entries(CORS)) res.headers.set(k, v);
+    return res;
   },
 };

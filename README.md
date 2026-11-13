@@ -12,12 +12,14 @@ Open the link on your Android phone. When the download finishes, tap it to insta
 
 **[▶ Open VibeRoom in your browser](https://viberoom.expo.app)**
 
-It's the same app and the same song library, running in Chrome, Edge or any modern browser. A few things stay phone-only:
-- Offline downloads: the web version needs internet.
-- Managing and uploading songs.
-- Lock-screen controls. The browser's own media keys and controls still work.
+It's the same app with the same song library and every feature, running in Chrome, Edge or any modern browser:
+- **Manage songs:** Library → 🔒. Upload songs straight from your computer: pick many files at once, and their details are read from the files.
+- **Offline downloads:** songs are saved in the browser. Once the site has been opened, it also opens without internet.
+- **Media controls:** play/pause and next/previous work from the keyboard's media keys and the browser's media controls instead of the lock screen.
 
-The website rebuilds itself on every push to `main` (`.github/workflows/web.yml`).
+The admin password is remembered in that browser until you tap **Lock**.
+
+The website rebuilds itself on every push to `main` (`.github/workflows/web.yml`). The browser-specific code is in the `*.web.js` files (`src/utils/files.web.js`, `offline.web.js`, `serviceWorker.web.js`) and `public/sw.js`. The phone uses the matching files without `.web`.
 
 To try the web version locally:
 
