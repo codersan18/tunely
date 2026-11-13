@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, View, StyleSheet } from 'react-native';
+import { Pressable, View, StyleSheet, Platform, ToastAndroid } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
 import { usePlayer } from '../context/PlayerContext';
@@ -9,8 +9,14 @@ export default function ShuffleButton({ size = 26, idleColor = colors.text }) {
   const { shuffleMode, toggleShuffle } = usePlayer();
   const on = shuffleMode !== 'off';
   const label = { off: 'Shuffle off', on: 'Shuffle on', smart: 'Smart shuffle on' }[shuffleMode];
+  const onPress = () => {
+    toggleShuffle();
+    // Say which mode we just switched to, so smart shuffle is easy to find.
+    const after = { off: 'Shuffle on', on: '✨ Smart shuffle on: plays songs like this one', smart: 'Shuffle off' }[shuffleMode];
+    if (Platform.OS === 'android') ToastAndroid.show(after, ToastAndroid.SHORT);
+  };
   return (
-    <Pressable onPress={toggleShuffle} hitSlop={10} accessibilityRole="button" accessibilityLabel={label}>
+    <Pressable onPress={onPress} hitSlop={10} accessibilityRole="button" accessibilityLabel={label}>
       <View>
         <Ionicons name="shuffle" size={size} color={on ? colors.accent : idleColor} />
         {shuffleMode === 'smart' && (

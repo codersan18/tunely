@@ -35,4 +35,4 @@ jobs:
       - name: Publish update to the preview channel
         env:
           MESSAGE: ${{ github.event.head_commit.message || 'Manual update' }}
-        run: eas update --channel preview --environment preview --non-interactive --message "$(echo "$MESSAGE" | head -n 1)"
+        run: eas update --channel preview --platform android --environment preview --non-interactive --message "$(echo "$MESSAGE" | head -n 1)"
