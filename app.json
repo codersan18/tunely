@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "Tunely",
+    "slug": "tunely",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0E0E10",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tunely.app"
+    },
+    "android": {
+      "package": "com.tunely.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#0E0E10",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": true,
+          "recordAudioAndroid": false,
+          "microphonePermission": false
+        }
+      ],
+      "expo-secure-store",
+      "expo-font",
+      "expo-asset"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "9bf8ad56-14aa-412b-914c-1b219241775d"
+      }
+    },
+    "owner": "ashersan18s-team"
+  }
+}
