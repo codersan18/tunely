@@ -17,6 +17,9 @@ in the Neon project **tunely** (`round-pond-23269926`, branch `main` = `br-polis
 | POST | `/admin/songs` | admin | save the song once the file is uploaded |
 | PATCH | `/admin/songs/:id` | admin | edit title, artist, album, genre, language, mood |
 | DELETE | `/admin/songs/:id` | admin | remove a song and its files |
+| GET | `/admin/optimize/pending` | admin | songs not yet compressed |
+| POST | `/admin/optimize/:id/prepare` | admin | upload URLs for the compressed file and embedded cover |
+| POST | `/admin/optimize/:id/done` | admin | switch to the compressed file, delete the original |
 
 Admin calls send the password in the `x-admin-key` header. It is stored only as the function's
 `ADMIN_KEY` environment variable, never in the app.
@@ -51,6 +54,7 @@ CREATE TABLE songs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL, artist text NOT NULL DEFAULT 'Unknown artist',
   album text, genre text, language text, mood text, duration integer,
+  optimized boolean NOT NULL DEFAULT false, original_size bigint,
   audio_key text NOT NULL, artwork_key text,
   content_hash text NOT NULL, size_bytes bigint,
   title_key text GENERATED ALWAYS AS (lower(regexp_replace(trim(title), '\s+', ' ', 'g'))) STORED,

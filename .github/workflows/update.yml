@@ -8,6 +8,8 @@ on:
     paths-ignore:
       - '**.md'
       - 'backend/**'
+      - 'scripts/**'
+      - '.github/workflows/optimize.yml'
   workflow_dispatch:
 
 concurrency:

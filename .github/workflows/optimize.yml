@@ -1,0 +1,43 @@
+# Compresses newly uploaded songs (320 kbps MP3 -> 128 kbps AAC, about 60% smaller),
+# adds the cover embedded in the file and fills in the song length.
+# Runs every 15 minutes and can be started by hand from the Actions tab.
+# Needs the VIBEROOM_ADMIN_KEY repository secret (the app's admin password).
+name: Compress new songs
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: optimize-songs
+  cancel-in-progress: false
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for new songs
+        id: check
+        env:
+          ADMIN_KEY: ${{ secrets.VIBEROOM_ADMIN_KEY }}
+        run: |
+          if [ -z "$ADMIN_KEY" ]; then echo "VIBEROOM_ADMIN_KEY secret is not set"; exit 1; fi
+          n=$(curl -sf -H "x-admin-key: $ADMIN_KEY" \
+            https://br-polished-mud-azcthrf7-api.compute.c-3.ap-southeast-1.aws.neon.tech/admin/optimize/pending \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).songs.length))")
+          echo "pending=$n" >> "$GITHUB_OUTPUT"
+          echo "$n song(s) waiting"
+
+      - name: Install ffmpeg
+        if: steps.check.outputs.pending != '0'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
+
+      - name: Compress
+        if: steps.check.outputs.pending != '0'
+        env:
+          ADMIN_KEY: ${{ secrets.VIBEROOM_ADMIN_KEY }}
+        run: node scripts/optimize-songs.mjs

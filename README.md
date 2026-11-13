@@ -92,3 +92,9 @@ Only upload music you own or have permission to share: everyone who installs the
 Updates use the `fingerprint` runtime version, so an update only reaches APKs with matching native code. Builds from before over-the-air updates were added (the first two) can't receive updates.
 
 The workflow (`.github/workflows/update.yml`) needs an Expo access token saved as the `EXPO_TOKEN` repository secret. To publish by hand instead: `npx eas-cli@latest update --channel preview --environment preview --message "what changed"`.
+
+## Song compression
+
+Uploaded songs are compressed automatically by `.github/workflows/optimize.yml` (every 15 minutes, or run it by hand from the Actions tab). Audio above 160 kbps is re-encoded to AAC 128 kbps `.m4a` (a 320 kbps MP3 becomes about 60% smaller), the cover embedded in the file is used if the song has none, and the song length is filled in. The original file is then deleted. The duplicate check still uses the original file's fingerprint.
+
+Needs the `VIBEROOM_ADMIN_KEY` repository secret (the admin password). To run it yourself: `ADMIN_KEY=... node scripts/optimize-songs.mjs` with `ffmpeg` installed.

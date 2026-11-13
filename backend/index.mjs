@@ -8,6 +8,10 @@
 //   POST   /admin/songs           -> save the song after the files are uploaded
 //   PATCH  /admin/songs/:id       -> edit a song's details (title, artist, album, genre, language, mood)
 //   DELETE /admin/songs/:id       -> remove a song and its files
+// Song compression (run by .github/workflows/optimize.yml):
+//   GET    /admin/optimize/pending        -> songs not yet compressed
+//   POST   /admin/optimize/:id/prepare    -> upload URLs for the compressed audio (+ cover found in the file)
+//   POST   /admin/optimize/:id/done       -> switch the song to the compressed file, delete the original
 //
 // No dependencies: Postgres via Neon's HTTP SQL endpoint, S3 URLs signed with node:crypto.
 // Neon injects DATABASE_URL and AWS_* at runtime. ADMIN_KEY is set at deploy time.
@@ -239,6 +243,81 @@ async function editSong(id, body) {
   }
 }
 
+// ---------- compression ----------
+
+const idOk = (id) => /^[0-9a-f-]{36}$/i.test(id);
+
+// Delete a stored file unless another song still uses it.
+async function deleteIfUnused(key) {
+  if (!key) return;
+  const still = await sql('SELECT 1 FROM songs WHERE audio_key = $1 OR artwork_key = $1 LIMIT 1', [key]);
+  if (!still.length) await fetch(presign('DELETE', key, 60), { method: 'DELETE' }).catch(() => {});
+}
+
+async function optimizePending() {
+  const rows = await sql('SELECT * FROM songs WHERE NOT optimized ORDER BY created_at LIMIT 20');
+  return json(200, { songs: rows.map((r) => ({ ...toSong(r), audioKey: r.audio_key, hasArtwork: !!r.artwork_key })) });
+}
+
+async function optimizePrepare(id, body) {
+  if (!idOk(id)) return json(400, { error: 'bad_id' });
+  const rows = await sql('SELECT content_hash, artwork_key FROM songs WHERE id = $1', [id]);
+  if (!rows.length) return json(404, { error: 'not_found' });
+  const hash = rows[0].content_hash;
+  const out = {};
+  const ext = clean(body.ext, 8).toLowerCase();
+  if (ext) {
+    if (!AUDIO_EXT.has(ext)) return json(400, { error: 'bad_type' });
+    // ".c" marks the compressed copy; the hash stays the original file's, so re-uploading it is still a duplicate.
+    out.audioKey = `audio/${hash}.c.${ext}`;
+    out.audioUploadUrl = presign('PUT', out.audioKey);
+  }
+  const artExt = clean(body.artworkExt, 8).toLowerCase();
+  if (artExt && !rows[0].artwork_key) {
+    if (!IMAGE_EXT.has(artExt)) return json(400, { error: 'bad_image' });
+    out.artworkKey = `art/${hash}.${artExt === 'jpeg' ? 'jpg' : artExt}`;
+    out.artworkUploadUrl = presign('PUT', out.artworkKey);
+  }
+  return json(200, out);
+}
+
+async function optimizeDone(id, body) {
+  if (!idOk(id)) return json(400, { error: 'bad_id' });
+  const rows = await sql('SELECT * FROM songs WHERE id = $1', [id]);
+  if (!rows.length) return json(404, { error: 'not_found' });
+  const song = rows[0];
+  const hash = song.content_hash;
+  const duration = Number(body.duration) > 0 ? Math.round(Number(body.duration)) : null;
+
+  let audioKey = song.audio_key;
+  let size = song.size_bytes == null ? null : Number(song.size_bytes);
+  const newAudio = clean(body.audioKey, 300);
+  if (newAudio) {
+    if (!newAudio.startsWith(`audio/${hash}.c.`)) return json(400, { error: 'bad_key' });
+    const head = await fetch(publicUrl(newAudio), { method: 'HEAD' });
+    if (!head.ok) return json(400, { error: 'not_uploaded', message: 'Compressed file is not in storage.' });
+    audioKey = newAudio;
+    size = Number(head.headers.get('content-length')) || size;
+  }
+  let artworkKey = song.artwork_key;
+  const newArt = clean(body.artworkKey, 300);
+  if (newArt && !artworkKey) {
+    if (!newArt.startsWith(`art/${hash}.`)) return json(400, { error: 'bad_key' });
+    const head = await fetch(publicUrl(newArt), { method: 'HEAD' });
+    if (head.ok) artworkKey = newArt;
+  }
+
+  const updated = await sql(
+    `UPDATE songs SET audio_key = $2, size_bytes = $3, artwork_key = $4,
+       duration = COALESCE(duration, $5), optimized = true,
+       original_size = COALESCE(original_size, $6)
+     WHERE id = $1 RETURNING *`,
+    [id, audioKey, size, artworkKey, duration, song.size_bytes],
+  );
+  if (audioKey !== song.audio_key) await deleteIfUnused(song.audio_key);
+  return json(200, { song: toSong(updated[0]), before: Number(song.size_bytes) || null, after: size });
+}
+
 async function deleteSong(id) {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return json(400, { error: 'bad_id' });
   const rows = await sql('DELETE FROM songs WHERE id = $1 RETURNING audio_key, artwork_key, content_hash', [id]);
@@ -267,6 +346,11 @@ export default {
         if (request.method === 'POST' && path === '/admin/verify') return json(200, { ok: true });
         if (request.method === 'POST' && path === '/admin/prepare') return await prepare(await request.json());
         if (request.method === 'POST' && path === '/admin/songs') return await saveSong(await request.json());
+        if (request.method === 'GET' && path === '/admin/optimize/pending') return await optimizePending();
+        const o = path.match(/^\/admin\/optimize\/([^/]+)\/(prepare|done)$/);
+        if (request.method === 'POST' && o) {
+          return await (o[2] === 'prepare' ? optimizePrepare : optimizeDone)(o[1], await request.json());
+        }
         const m = path.match(/^\/admin\/songs\/([^/]+)$/);
         if (request.method === 'DELETE' && m) return await deleteSong(m[1]);
         if (request.method === 'PATCH' && m) return await editSong(m[1], await request.json());
