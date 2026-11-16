@@ -35,10 +35,22 @@ export function PlayerProvider({ children }) {
   const { playableSource, addRecent, downloadedTracks } = useLibrary();
   const { songs, status: catalogStatus } = useCatalog();
 
-  // The native playlist. Replaced with a fresh one after a playback error (it can't recover by itself).
-  const [playlist, setPlaylist] = useState(() => createAudioPlaylist({ updateInterval: 500 }));
+  // The native playlist. One for the whole app session: after a playback error, play() prepares it
+  // again (patches/expo-audio+*.patch), so it never has to be rebuilt.
+  const [playlist] = useState(() => createAudioPlaylist({ updateInterval: 500 }));
   const status = useAudioPlaylistStatus(playlist);
   useEffect(() => () => { try { playlist.release(); } catch (e) { /* already gone */ } }, [playlist]);
+
+  // Liked songs, playlists and "Jump back in" keep their own copy of each song, saved on the phone.
+  // Its link goes stale when the song file changes on the server (compression gives it a new one),
+  // so always play the server's current version of the song.
+  const latest = useMemo(() => new Map(songs.map((s) => [s.id, s])), [songs]);
+  const latestRef = useRef(latest); latestRef.current = latest;
+  const fresh = useCallback((t) => {
+    const s = latestRef.current.get(t.id);
+    return s ? { ...t, ...s } : t;
+  }, []);
+  const sourceOf = useCallback((t) => playableSource(fresh(t)), [playableSource, fresh]);
 
   const native = useRef([]);           // queue entries in the same order as the native playlist
   const lastNativeIndex = useRef(-1);  // native position we last synced to
@@ -152,7 +164,6 @@ export function PlayerProvider({ children }) {
   }, [status.currentIndex, status.currentTime, followNative]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The queue moved to a song the native playlist isn't on (user picked a song): load it.
-  const [reloadAt, setReloadAt] = useState(null); // { qid, seconds } after rebuilding the playlist
   useEffect(() => {
     if (!currentTrack) return;
     const pos = playlist.currentIndex;
@@ -163,12 +174,11 @@ export function PlayerProvider({ children }) {
     } else {
       truncateAfter(pos);
     }
-    playlist.add(playableSource(currentTrack));
+    playlist.add(sourceOf(currentTrack));
     native.current.push(currentTrack);
     const at = native.current.length - 1;
     playlist.skipTo(at);
     lastNativeIndex.current = playlist.currentIndex;
-    if (reloadAt?.qid === currentTrack.qid && reloadAt.seconds > 1) playlist.seekTo(reloadAt.seconds).catch(() => {});
     playlist.play();
   }, [currentTrack?.qid, playlist]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -181,10 +191,10 @@ export function PlayerProvider({ children }) {
     if (already || (!plannedNext && native.current.length === pos + 1)) return;
     truncateAfter(pos);
     if (plannedNext) {
-      playlist.add(playableSource(plannedNext));
+      playlist.add(sourceOf(plannedNext));
       native.current.push(plannedNext);
     }
-  }, [currentTrack?.qid, plannedNext?.qid, playlist, truncateAfter, playableSource]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentTrack?.qid, plannedNext?.qid, playlist, truncateAfter, sourceOf]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Repeat one: let the native player loop the song.
   useEffect(() => {
@@ -197,43 +207,47 @@ export function PlayerProvider({ children }) {
     addRecent(currentTrack);
     played.current = [currentTrack.id, ...played.current.filter((id) => id !== currentTrack.id)].slice(0, 200);
     try {
+      const meta = metaOf(fresh(currentTrack));
       if (!lockScreenOn.current) {
-        playlist.setActiveForLockScreen(true, metaOf(currentTrack), { showNextTrack: true, showPreviousTrack: true });
+        playlist.setActiveForLockScreen(true, meta, { showNextTrack: true, showPreviousTrack: true });
         lockScreenOn.current = true;
       } else {
-        playlist.updateLockScreenMetadata(metaOf(currentTrack));
+        playlist.updateLockScreenMetadata(meta);
       }
     } catch (e) {
       // Lock screen controls are optional (not available in every environment).
     }
   }, [currentTrack?.qid, playlist]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // A playback error (e.g. the network dropped) leaves the native player stuck, so build a new one
-  // and carry on from the same spot. If the same song fails twice in a row, move on to the next one.
+  // A playback error (the network dropped, or the song's file is gone): try the same song again a
+  // moment later, from the same spot. If it fails again, move on to the next song. After a few songs
+  // in a row fail (e.g. no internet), stop trying; pressing play tries again.
   const failedQid = useRef(null);
+  const failStreak = useRef(0);
+  const nextRef = useRef(null);
   useEffect(() => {
+    if (status.playing) { failedQid.current = null; failStreak.current = 0; }
+  }, [status.playing]);
+  useEffect(() => {
+    let retry = null;
     const sub = playlist.addListener('playlistStatusUpdate', (s) => {
       if (!s?.error) return;
+      clearTimeout(retry);
       const entry = native.current[playlist.currentIndex];
-      const seconds = s.currentTime || 0;
-      const fresh = createAudioPlaylist({ updateInterval: 500 });
-      native.current = [];
-      lastNativeIndex.current = -1;
-      lockScreenOn.current = false;
-      if (entry && failedQid.current === entry.qid) {
-        failedQid.current = null;
-        setReloadAt(null);
-        setPlaylist(fresh);
-        const q = queueRef.current;
-        const i = q.findIndex((t) => t.qid === entry.qid);
-        if (i >= 0 && i + 1 < q.length) setIndex(i + 1);
-      } else {
-        failedQid.current = entry?.qid || null;
-        setReloadAt(entry ? { qid: entry.qid, seconds } : null);
-        setPlaylist(fresh);
+      if (entry && failedQid.current !== entry.qid) {
+        failedQid.current = entry.qid;
+        retry = setTimeout(() => playlist.play(), 2000);
+        return;
       }
+      failedQid.current = null;
+      failStreak.current += 1;
+      if (failStreak.current >= 3) return;
+      retry = setTimeout(() => {
+        nextRef.current?.();
+        playlist.play();
+      }, 500);
     });
-    return () => sub.remove();
+    return () => { clearTimeout(retry); sub.remove(); };
   }, [playlist]);
 
   // Stop-at-end-of-song: once the song has finished, switch the option off again.
@@ -251,7 +265,7 @@ export function PlayerProvider({ children }) {
     }
     const source = list && list.length ? list : [track];
     context.current = new Set(source.map((t) => t.id));
-    const newQueue = source.map((t) => toEntry(t));
+    const newQueue = source.map((t) => toEntry(fresh(t)));
     const i = source.findIndex((t) => t.id === track.id);
     setQueue(newQueue);
     setIndex(i < 0 ? 0 : i);
@@ -277,6 +291,7 @@ export function PlayerProvider({ children }) {
       playlist.seekTo(0).catch(() => {});
     }
   }, [currentTrack, playlist, followNative, queue.length, index]);
+  nextRef.current = next;
 
   const previous = useCallback(() => {
     if (!currentTrack) return;
@@ -295,7 +310,7 @@ export function PlayerProvider({ children }) {
   // ---- queue management ----
   const playNext = useCallback((track) => {
     if (index < 0) return playTrack(track);
-    setQueue((q) => [...q.slice(0, index + 1), toEntry(track, { manual: true }), ...q.slice(index + 1)]);
+    setQueue((q) => [...q.slice(0, index + 1), toEntry(fresh(track), { manual: true }), ...q.slice(index + 1)]);
   }, [index, playTrack]);
 
   const addToQueue = useCallback((track) => {
@@ -304,7 +319,7 @@ export function PlayerProvider({ children }) {
       // Keep "Add to queue" songs together, right after other queued songs.
       let at = index + 1;
       while (at < q.length && q[at].manual) at += 1;
-      return smart ? [...q.slice(0, at), toEntry(track, { manual: true }), ...q.slice(at)] : [...q, toEntry(track, { manual: true })];
+      return smart ? [...q.slice(0, at), toEntry(fresh(track), { manual: true }), ...q.slice(at)] : [...q, toEntry(fresh(track), { manual: true })];
     });
   }, [index, playTrack, smart]);
 

@@ -111,13 +111,21 @@ Only upload music you own or have permission to share: everyone who installs the
 | App code (screens, design, features) | Push to `main`. GitHub Actions runs `eas update`, and every installed app picks it up the next time it is opened. The website at viberoom.expo.app is rebuilt at the same time. |
 | Icon, name, splash, or a package with native code | Build a new APK (`npx eas-cli@latest build --profile preview --platform android`) and share the new link. |
 
+### Patched expo-audio
+
+`patches/expo-audio+58.0.12.patch` fixes two bugs in expo-audio's Android code, and `package.json` builds expo-audio from source (`expo.autolinking.buildFromSource`) so the patch is used. `npm install` applies it (`postinstall: patch-package`).
+- The lock screen session only received 2 of the player's events. It never learned that a song had been added, so the app crashed when the next song started (`Invalid PlayerInfo update`), and the lock screen's play button kept showing loading. Same fix as [expo/expo#52193](https://github.com/expo/expo/pull/52193).
+- `play()` did nothing after a playback error (no internet, missing file). It now prepares the player again, so the app retries the same song instead of rebuilding the player.
+
+When upgrading expo-audio, check whether #52193 is included. If it is, drop that part of the patch. The `play()` part stays until expo-audio does the same.
+
 Updates use the `fingerprint` runtime version, so an update only reaches APKs with matching native code. Builds from before over-the-air updates were added (the first two) can't receive updates.
 
 The workflow (`.github/workflows/update.yml`) needs an Expo access token saved as the `EXPO_TOKEN` repository secret. To publish by hand instead: `npx eas-cli@latest update --channel preview --environment preview --message "what changed"`.
 
 ## Song compression
 
-Uploaded songs are compressed automatically by `.github/workflows/optimize.yml` (every 15 minutes, or run it by hand from the Actions tab). Audio above 160 kbps is re-encoded to AAC 128 kbps `.m4a` (a 320 kbps MP3 becomes about 60% smaller), the cover embedded in the file is used if the song has none, and the song length is filled in. The original file is then deleted. The duplicate check still uses the original file's fingerprint.
+Uploaded songs are compressed automatically by `.github/workflows/optimize.yml` (the backend starts it right after each upload; it also has a 15-minute schedule as a backup, and you can run it by hand from the Actions tab). Audio above 160 kbps is re-encoded to AAC 128 kbps `.m4a` (a 320 kbps MP3 becomes about 60% smaller), the cover embedded in the file is used if the song has none, and the song length is filled in. The original file is then deleted. The duplicate check still uses the original file's fingerprint.
 
 Needs the `VIBEROOM_ADMIN_KEY` repository secret (the admin password). To run it yourself: `ADMIN_KEY=... node scripts/optimize-songs.mjs` with `ffmpeg` installed.
 
