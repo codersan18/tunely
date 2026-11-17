@@ -6,7 +6,7 @@
 // Needs: logged in to EAS (npx eas-cli@latest login) and to GitHub (gh auth login).
 
 import { execSync } from 'node:child_process';
-import { writeFileSync, mkdtempSync } from 'node:fs';
+import { existsSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -18,6 +18,16 @@ if (!notes) {
 }
 
 const run = (cmd) => execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+
+// GitHub CLI: from PATH, or (Windows) its install folder. A terminal opened before gh was
+// installed doesn't have it on PATH yet.
+const GH_WINDOWS = 'C:\\Program Files\\GitHub CLI\\gh.exe';
+const gh = (() => {
+  try { run(process.platform === 'win32' ? 'where gh' : 'command -v gh'); return 'gh'; } catch (e) { /* not on PATH */ }
+  if (process.platform === 'win32' && existsSync(GH_WINDOWS)) return `"${GH_WINDOWS}"`;
+  console.error('GitHub CLI (gh) not found. Install it (winget install GitHub.cli), open a new terminal and run gh auth login.');
+  process.exit(1);
+})();
 const json = (out) => JSON.parse(out.slice(out.search(/[[{]/)));
 
 // 1. The newest finished preview build.
@@ -28,9 +38,9 @@ const commit = build.gitCommitHash;
 if (!runtime || !commit) throw new Error('The build has no runtime version or commit; can\'t release it.');
 
 // 2. Not released already?
-const releases = json(run(`gh release list -R ${REPO} --limit 50 --json tagName`)).map((r) => r.tagName);
+const releases = json(run(`${gh} release list -R ${REPO} --limit 50 --json tagName`)).map((r) => r.tagName);
 for (const tag of releases) {
-  const body = json(run(`gh release view ${tag} -R ${REPO} --json body`)).body || '';
+  const body = json(run(`${gh} release view ${tag} -R ${REPO} --json body`)).body || '';
   if (body.includes(`runtime: ${runtime}`)) {
     console.log(`This build (runtime ${runtime}) is already released as ${tag}. Nothing to do.`);
     process.exit(0);
@@ -58,6 +68,6 @@ const body = [
 ].join('\n');
 const notesFile = join(dir, 'notes.md');
 writeFileSync(notesFile, body);
-run(`gh release create ${tag} "${apk}#VibeRoom.apk" -R ${REPO} --target ${commit} --title "VibeRoom for Android" --latest --notes-file "${notesFile}"`);
+run(`${gh} release create ${tag} "${apk}#VibeRoom.apk" -R ${REPO} --target ${commit} --title "VibeRoom for Android" --latest --notes-file "${notesFile}"`);
 console.log(`Released ${tag}: https://github.com/${REPO}/releases/tag/${tag}`);
 console.log(`Download link (always the latest): https://github.com/${REPO}/releases/latest/download/VibeRoom.apk`);
