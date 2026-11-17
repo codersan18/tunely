@@ -121,7 +121,7 @@ export function LibraryProvider({ children }) {
 
   const download = useCallback(async (track) => {
     if (downloadsRef.current[track.id] || downloading[track.id]) return;
-    if (typeof track.url !== 'string') return; // bundled files are already offline
+    if (typeof track.url !== 'string' || track.local) return; // bundled files and songs on the phone are already offline
     setDownloading((d) => ({ ...d, [track.id]: true }));
     try {
       const entry = await saveSong(track);

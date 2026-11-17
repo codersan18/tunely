@@ -185,9 +185,10 @@ export function tagsToDetails(frames) {
 
 /**
  * Read the tags of an audio file on the phone. Returns null if it has none (or isn't an MP3).
- * The cover, if any, is saved to the cache so the upload form can use it like a picked image.
+ * The cover, if any, is saved to the cache so the upload form can use it like a picked image
+ * (unless `cover: false`: songs on the phone are listed without saving anything).
  */
-export async function readTags(uri) {
+export async function readTags(uri, { cover: withCover = true } = {}) {
   const file = new File(uri);
   const handle = file.open(FileMode.ReadOnly);
   let bytes;
@@ -206,7 +207,7 @@ export async function readTags(uri) {
 
   const details = tagsToDetails(parseID3(bytes));
   if (!details) return null;
-  if (details.picture) {
+  if (withCover && details.picture) {
     const ext = details.picture.mime.includes('png') ? 'png' : 'jpg';
     const cover = new File(Paths.cache, `tag-cover-${Date.now()}-${Math.floor(Math.random() * 1e6)}.${ext}`);
     cover.create({ overwrite: true });

@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
 import { useLibrary } from '../context/LibraryContext';
 import { useCatalog } from '../context/CatalogContext';
+import { useLocalMusic, LOCAL_SUPPORTED } from '../context/LocalMusicContext';
 import NamePrompt from '../components/NamePrompt';
 import Cover from '../components/Cover';
 
@@ -34,6 +35,7 @@ function Item({ art, title, sub, onPress }) {
 export default function LibraryScreen({ navigation }) {
   const { liked, playlists, downloadedTracks, createPlaylist } = useLibrary();
   const { songs, artists, albums } = useCatalog();
+  const local = useLocalMusic();
   const [filter, setFilter] = useState('Playlists');
   const [naming, setNaming] = useState(false);
   const open = (playlistId) => navigation.navigate('Playlist', { playlistId });
@@ -58,6 +60,14 @@ export default function LibraryScreen({ navigation }) {
         sub={`${downloadedTracks.length} songs · plays offline`}
         onPress={() => open('downloads')}
       />
+      {LOCAL_SUPPORTED && (
+        <Item
+          art={<GradientArt icon="phone-portrait" from="#5C3A1F" to="#F2B880" />}
+          title="On this phone"
+          sub={local.status === 'ready' ? `${local.tracks.length} songs saved on your phone` : 'Play songs saved on your phone'}
+          onPress={() => open('device')}
+        />
+      )}
     </View>
   );
 

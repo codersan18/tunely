@@ -60,13 +60,15 @@ export default function TrackOptions({ track, visible, onClose, playlistId }) {
             )}
             <SheetItem icon="play-forward-outline" label="Play next" onPress={() => { playNext(track); toast('Playing next'); close(); }} />
             <SheetItem icon="list-outline" label="Add to queue" onPress={() => { addToQueue(track); toast('Added to queue'); close(); }} />
-            <SheetItem
-              icon={downloaded ? 'checkmark-circle' : 'arrow-down-circle-outline'}
-              color={downloaded ? colors.accent : colors.text}
-              label={downloaded ? 'Remove download' : downloading ? 'Downloading…' : 'Download'}
-              onPress={downloading ? undefined : onDownload}
-              right={downloading ? <ActivityIndicator color={colors.accent} /> : null}
-            />
+            {!track.local && ( // songs on the phone already play without internet
+              <SheetItem
+                icon={downloaded ? 'checkmark-circle' : 'arrow-down-circle-outline'}
+                color={downloaded ? colors.accent : colors.text}
+                label={downloaded ? 'Remove download' : downloading ? 'Downloading…' : 'Download'}
+                onPress={downloading ? undefined : onDownload}
+                right={downloading ? <ActivityIndicator color={colors.accent} /> : null}
+              />
+            )}
           </ScrollView>
         ) : (
           <ScrollView>

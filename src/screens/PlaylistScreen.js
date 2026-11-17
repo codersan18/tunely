@@ -8,6 +8,7 @@ import { useCatalog, hasArtist } from '../context/CatalogContext';
 import Cover from '../components/Cover';
 import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
+import { useLocalMusic } from '../context/LocalMusicContext';
 import TrackRow from '../components/TrackRow';
 import NamePrompt from '../components/NamePrompt';
 import Sheet, { SheetItem } from '../components/Sheet';
@@ -24,6 +25,7 @@ export default function PlaylistScreen({ route, navigation }) {
     isDownloaded, isDownloading, downloadMany, removeDownload,
   } = useLibrary();
   const { songs, artists, albums, status } = useCatalog();
+  const local = useLocalMusic();
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
 
@@ -37,6 +39,12 @@ export default function PlaylistScreen({ route, navigation }) {
       return {
         id: 'downloads', title: 'Downloaded', color: '#0B5C44', icon: 'arrow-down', tracks: downloadedTracks,
         description: `Plays without internet · ${formatMB(downloadedBytes)} used`,
+      };
+    }
+    if (playlistId === 'device') {
+      return {
+        id: 'device', title: 'On this phone', color: '#5C3A1F', icon: 'phone-portrait', tracks: local.tracks,
+        description: 'Songs saved on your phone · play without internet',
       };
     }
     if (isUser) {
@@ -74,7 +82,7 @@ export default function PlaylistScreen({ route, navigation }) {
       };
     }
     return null;
-  }, [playlistId, isUser, songs, artists, albums, liked, playlists, downloadedTracks, downloadedBytes]);
+  }, [playlistId, isUser, songs, artists, albums, liked, playlists, downloadedTracks, downloadedBytes, local.tracks]);
 
   if (!playlist) {
     // e.g. the playlist was just deleted
@@ -83,8 +91,10 @@ export default function PlaylistScreen({ route, navigation }) {
 
   const list = playlist.tracks;
   const playingThis = isPlaying && list.some((t) => t.id === currentTrack?.id);
-  const allDownloaded = list.length > 0 && list.every((t) => isDownloaded(t.id));
-  const anyDownloading = list.some((t) => isDownloading(t.id));
+  const online = list.filter((t) => !t.local); // songs on the phone don't need downloading
+  const allDownloaded = online.length > 0 && online.every((t) => isDownloaded(t.id));
+  const anyDownloading = online.some((t) => isDownloading(t.id));
+  const isDevice = playlistId === 'device';
 
   const onPlay = () => {
     if (!list.length) return;
@@ -93,12 +103,12 @@ export default function PlaylistScreen({ route, navigation }) {
   };
 
   const onDownloadAll = () => {
-    if (anyDownloading || !list.length) return;
+    if (anyDownloading || !online.length) return;
     if (allDownloaded) {
       confirmAction('Remove downloads?', 'These songs will no longer play offline.', 'Remove',
-        () => list.forEach((t) => removeDownload(t.id)));
+        () => online.forEach((t) => removeDownload(t.id)));
     } else {
-      downloadMany(list.filter((t) => !isDownloaded(t.id)));
+      downloadMany(online.filter((t) => !isDownloaded(t.id)));
     }
   };
 
@@ -126,7 +136,7 @@ export default function PlaylistScreen({ route, navigation }) {
       </Text>
       <View style={styles.actions}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20 }}>
-          {playlistId !== 'downloads' && (
+          {playlistId !== 'downloads' && !isDevice && (
             <Pressable onPress={onDownloadAll} hitSlop={8}>
               {anyDownloading ? (
                 <ActivityIndicator color={colors.accent} />
@@ -163,6 +173,35 @@ export default function PlaylistScreen({ route, navigation }) {
     ? 'No songs here yet.'
     : 'Add songs from any song\'s ••• menu → "Add to playlist".');
 
+  // "On this phone" before the list is ready: ask for access, or say what's happening.
+  const deviceEmpty = (() => {
+    if (!isDevice) return null;
+    if (local.status === 'checking' || local.status === 'loading') {
+      return (
+        <View style={styles.deviceBox}>
+          <ActivityIndicator color={colors.accent} />
+          <Text style={styles.empty}>Looking for songs on your phone…</Text>
+        </View>
+      );
+    }
+    if (local.status === 'needs-permission' || local.status === 'denied') {
+      const denied = local.status === 'denied';
+      return (
+        <View style={styles.deviceBox}>
+          <Text style={styles.empty}>
+            {denied
+              ? 'VibeRoom isn\'t allowed to see the music on your phone. Turn on "Music and audio" in Settings → Permissions.'
+              : 'Let VibeRoom see the music saved on your phone (Music, Download, WhatsApp audio…). Songs play from your phone; nothing is copied or uploaded.'}
+          </Text>
+          <Pressable onPress={local.requestAccess} style={styles.allowBtn}>
+            <Text style={styles.allowText}>{denied ? 'Open settings' : 'Allow access'}</Text>
+          </Pressable>
+        </View>
+      );
+    }
+    return <Text style={styles.empty}>No songs found on this phone. Pull down to look again.</Text>;
+  })();
+
   return (
     <LinearGradient colors={[playlist.color, colors.bg]} locations={[0, 0.45]} style={{ flex: 1 }}>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
@@ -173,7 +212,8 @@ export default function PlaylistScreen({ route, navigation }) {
           data={list}
           keyExtractor={(t) => t.id}
           ListHeaderComponent={header}
-          ListEmptyComponent={<Text style={styles.empty}>{emptyText}</Text>}
+          ListEmptyComponent={deviceEmpty || <Text style={styles.empty}>{emptyText}</Text>}
+          {...(isDevice && local.status === 'ready' ? { refreshing: false, onRefresh: local.rescan } : null)}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
           renderItem={({ item, index }) => <TrackRow track={item} list={list} index={index} playlistId={playlistId} />}
         />
@@ -206,4 +246,7 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 14 },
   playBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: 24, paddingHorizontal: 24 },
+  deviceBox: { alignItems: 'center', gap: 4, marginTop: 8 },
+  allowBtn: { marginTop: 20, backgroundColor: colors.accent, borderRadius: 24, paddingHorizontal: 28, paddingVertical: 12 },
+  allowText: { color: colors.bg, fontWeight: '700', fontSize: 15 },
 });

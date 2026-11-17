@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LibraryProvider } from './src/context/LibraryContext';
 import { PlayerProvider } from './src/context/PlayerContext';
 import { CatalogProvider } from './src/context/CatalogContext';
+import { LocalMusicProvider } from './src/context/LocalMusicContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import OpeningScreen from './src/components/OpeningScreen';
 import WebFrame from './src/components/WebFrame';
@@ -23,10 +24,12 @@ export default function App() {
           player asks the library whether a song is saved offline. */}
       <LibraryProvider>
         <CatalogProvider>
-          <PlayerProvider>
-            <AppNavigator />
-            <StatusBar style="light" />
-          </PlayerProvider>
+          <LocalMusicProvider>
+            <PlayerProvider>
+              <AppNavigator />
+              <StatusBar style="light" />
+            </PlayerProvider>
+          </LocalMusicProvider>
         </CatalogProvider>
       </LibraryProvider>
       {/* The app loads underneath while the opening screen plays. */}

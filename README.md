@@ -35,7 +35,8 @@ The web packages are kept out of `package.json` on purpose. With them listed the
 - **Manage songs (admin)** – Library → lock icon → admin password. Pick audio files, edit title / artist / album / genre, add a cover, upload. Songs already in the library are skipped (same file, or same title + artist). Remove songs from the Library tab.
 - **Home** – quick tiles (All songs, Liked, Downloaded, your playlists), Jump back in, Recently added, Artists, All songs. Pull down to refresh.
 - **Search** – searches the library on the phone (works offline); browse by artist and genre
-- **Your Library** – All songs, Liked Songs, Downloaded, your playlists, artists
+- **Your Library** – All songs, Liked Songs, Downloaded, On this phone, your playlists, artists
+- **On this phone** (Android) – plays songs already saved on the phone (Music, Download, WhatsApp audio…) straight from their files; nothing is copied or uploaded. The first time, tap **Allow access** ("Music and audio" permission; no access to photos or videos). Title, artist and album come from each MP3's tags, or from the file name ("Artist - Title.mp3"); files under 30 seconds (ringtones, voice notes) are left out. Like them, add them to playlists and queue them like any other song. The list updates when you come back to the app, or pull down to look again. Code: `src/context/LocalMusicContext.js`.
 - **Playlist / Artist / Genre pages** – play, shuffle, download the whole list
 - **Now Playing** – full-screen player with drag-to-seek bar, prev/next, shuffle, repeat (off / all / one), like
 - **Mini player** above the tab bar with live progress

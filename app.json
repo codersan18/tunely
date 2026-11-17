@@ -24,6 +24,12 @@
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ],
+      "blockedPermissions": [
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
       ]
     },
     "web": {
@@ -39,6 +45,12 @@
         }
       ],
       "expo-secure-store",
+      [
+        "expo-media-library",
+        {
+          "granularPermissions": ["audio"]
+        }
+      ],
       "expo-font",
       "expo-asset",
       [
