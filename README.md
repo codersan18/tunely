@@ -109,7 +109,13 @@ Only upload music you own or have permission to share: everyone who installs the
 |---|---|
 | Songs (in the app's admin screen) | Live for everyone right away. |
 | App code (screens, design, features) | Push to `main`. GitHub Actions runs `eas update`, and every installed app picks it up the next time it is opened. The website at viberoom.expo.app is rebuilt at the same time. |
-| Icon, name, splash, or a package with native code | Build a new APK (`npx eas-cli@latest build --profile preview --platform android`), then publish it as a new GitHub release with the file named `VibeRoom.apk` (`gh release create android-YYYY-MM-DD VibeRoom.apk --latest`). The download link above always gives the latest release. |
+| Icon, name, splash, or a package with native code | Build a new APK (`npx eas-cli@latest build --profile preview --platform android`), then release it: `node scripts/release-apk.mjs "what's new"`. Installed apps then show **New version available** with a Download button. |
+
+### Releasing a new APK
+
+`scripts/release-apk.mjs` takes the newest finished Android build from EAS and publishes it as a GitHub release, with the file named `VibeRoom.apk`. The download link at the top always gives the latest release, so it never changes. It needs `npx eas-cli@latest login` and `gh auth login`.
+
+The release notes end with a hidden line, `<!-- runtime: <hash> -->`: the build's runtime version (a fingerprint of its native code). When the app opens, `src/utils/newVersion.js` reads the latest release from GitHub. If that runtime isn't the app's own, it shows **New version available**. "Later" hides it for 3 days. If you publish a release by hand, copy that line from the build's details on expo.dev (Runtime version), or the message won't show.
 
 ### Patched expo-audio
 

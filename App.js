@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LibraryProvider } from './src/context/LibraryContext';
@@ -8,11 +8,14 @@ import AppNavigator from './src/navigation/AppNavigator';
 import OpeningScreen from './src/components/OpeningScreen';
 import WebFrame from './src/components/WebFrame';
 import registerServiceWorker from './src/utils/serviceWorker';
+import { checkForNewVersion } from './src/utils/newVersion';
 
 registerServiceWorker(); // web only; does nothing on the phone
 
 export default function App() {
   const [opening, setOpening] = useState(true);
+  // Once the opening screen is gone, see whether a newer APK has been released.
+  useEffect(() => { if (!opening) checkForNewVersion(); }, [opening]);
   return (
     <SafeAreaProvider>
       <WebFrame>
