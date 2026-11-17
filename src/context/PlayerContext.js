@@ -3,6 +3,7 @@ import { createAudioPlaylist, useAudioPlaylistStatus, setAudioModeAsync } from '
 import { useLibrary } from './LibraryContext';
 import { useCatalog } from './CatalogContext';
 import { pickSimilar } from '../utils/smartShuffle';
+import { isLocalCover } from '../utils/localCover';
 
 const PlayerContext = createContext(null);
 
@@ -18,7 +19,11 @@ const MAX_NATIVE_ITEMS = 60; // start a fresh native playlist after this many so
 let qidCounter = 0;
 const toEntry = (track, extra) => ({ ...track, ...extra, qid: `q${++qidCounter}` });
 
-const metaOf = (t) => ({ title: t.title, artist: t.artist, albumTitle: t.album || undefined, artworkUrl: t.artwork || undefined });
+// Lock screen: covers of songs on the phone are only in memory, which Android's lock screen can't load.
+const metaOf = (t) => ({
+  title: t.title, artist: t.artist, albumTitle: t.album || undefined,
+  artworkUrl: (t.artwork && !isLocalCover(t.artwork) && t.artwork) || undefined,
+});
 
 // How playback works
 // -------------------

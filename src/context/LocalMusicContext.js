@@ -5,6 +5,7 @@ import {
   Asset, AssetField, MediaType, Query, getPermissionsAsync, requestPermissionsAsync,
 } from 'expo-media-library';
 import { readTags } from '../utils/readTags';
+import { localCover } from '../utils/localCover';
 
 // Songs already saved on the phone (Music, Download, WhatsApp audio…), found through Android's
 // media library. They play straight from their file: nothing is copied or uploaded.
@@ -35,7 +36,7 @@ const toTrack = (meta, uri, tags) => {
     artist: tags?.artist || guess.artist || 'Unknown artist',
     album: tags?.album || '',
     url: uri,
-    artwork: null,
+    artwork: localCover(uri), // read from the file when shown (utils/localCover.js)
     duration: toSeconds(meta.duration),
     local: true,
   };

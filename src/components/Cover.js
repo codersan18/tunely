@@ -2,6 +2,7 @@ import React from 'react';
 import { Image, View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useArtwork } from '../utils/localCover';
 
 // Cover art, or a gradient with a music note when a song has no cover.
 // The gradient colour is picked from the title so each song looks a bit different.
@@ -13,7 +14,8 @@ const pick = (seed = '') => {
   return PALETTE[h % PALETTE.length];
 };
 
-export default function Cover({ uri, seed, size, style, round, icon = 'musical-note' }) {
+export default function Cover({ uri: artwork, seed, size, style, round, icon = 'musical-note' }) {
+  const uri = useArtwork(artwork); // songs on the phone: cover read from the file, in memory
   const shape = [
     size != null && { width: size, height: size },
     round && size != null && { borderRadius: size / 2 },

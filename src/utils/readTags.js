@@ -189,22 +189,8 @@ export function tagsToDetails(frames) {
  * (unless `cover: false`: songs on the phone are listed without saving anything).
  */
 export async function readTags(uri, { cover: withCover = true } = {}) {
-  const file = new File(uri);
-  const handle = file.open(FileMode.ReadOnly);
-  let bytes;
-  try {
-    const head = await handle.readBytes(10);
-    if (head.length < 10 || head[0] !== 0x49 || head[1] !== 0x44 || head[2] !== 0x33) return null;
-    const size = syncsafe(head, 6);
-    if (size <= 0 || size > MAX_TAG_BYTES) return null;
-    const rest = await handle.readBytes(size);
-    bytes = new Uint8Array(10 + rest.length);
-    bytes.set(head, 0);
-    bytes.set(rest, 10);
-  } finally {
-    handle.close();
-  }
-
+  const bytes = await readTagBytes(uri);
+  if (!bytes) return null;
   const details = tagsToDetails(parseID3(bytes));
   if (!details) return null;
   if (withCover && details.picture) {
@@ -216,4 +202,46 @@ export async function readTags(uri, { cover: withCover = true } = {}) {
   }
   delete details.picture;
   return details;
+}
+
+// Only the ID3 tag at the start of the file (with the cover), never the song itself.
+async function readTagBytes(uri) {
+  const handle = new File(uri).open(FileMode.ReadOnly);
+  try {
+    const head = await handle.readBytes(10);
+    if (head.length < 10 || head[0] !== 0x49 || head[1] !== 0x44 || head[2] !== 0x33) return null;
+    const size = syncsafe(head, 6);
+    if (size <= 0 || size > MAX_TAG_BYTES) return null;
+    const rest = await handle.readBytes(size);
+    const bytes = new Uint8Array(10 + rest.length);
+    bytes.set(head, 0);
+    bytes.set(rest, 10);
+    return bytes;
+  } finally {
+    handle.close();
+  }
+}
+
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+function base64(b) {
+  let out = '';
+  for (let i = 0; i < b.length; i += 3) {
+    const n = (b[i] << 16) | ((b[i + 1] || 0) << 8) | (b[i + 2] || 0);
+    out += B64[(n >> 18) & 63] + B64[(n >> 12) & 63]
+      + (i + 1 < b.length ? B64[(n >> 6) & 63] : '=') + (i + 2 < b.length ? B64[n & 63] : '=');
+  }
+  return out;
+}
+
+const MAX_COVER_BYTES = 1.5 * 1024 * 1024;
+
+/**
+ * The cover picture inside an MP3, as a data: URI kept in memory (nothing is written to the phone).
+ * null if the file has no cover (or isn't an MP3).
+ */
+export async function readCoverDataUri(uri) {
+  const bytes = await readTagBytes(uri);
+  const pic = bytes && parseID3(bytes)?.APIC;
+  if (!pic?.data || pic.data.length < 100 || pic.data.length > MAX_COVER_BYTES) return null;
+  return `data:${pic.mime};base64,${base64(pic.data)}`;
 }
