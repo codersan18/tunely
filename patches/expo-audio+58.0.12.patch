@@ -1,3 +1,47 @@
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlaylist.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlaylist.kt
+index bf3f9c5..ff5e0b9 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlaylist.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlaylist.kt
+@@ -6,6 +6,7 @@ import androidx.media3.common.MediaItem
+ import androidx.media3.common.PlaybackException
+ import androidx.media3.common.Player
+ import androidx.media3.common.util.UnstableApi
++import androidx.media3.exoplayer.DefaultLoadControl
+ import androidx.media3.exoplayer.ExoPlayer
+ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+ import androidx.media3.datasource.DataSource
+@@ -17,6 +18,23 @@ import java.lang.ref.WeakReference
+ private const val PLAYLIST_STATUS_UPDATE = "playlistStatusUpdate"
+ private const val TRACK_CHANGED = "trackChanged"
+ 
++// Load far ahead, in memory: the rest of the current song, then the next song in the playlist, so a
++// weak network doesn't make playback stall. Capped by time and by bytes; nothing is written to storage.
++private const val BUFFER_AHEAD_MS = 10 * 60 * 1000
++private const val BUFFER_AHEAD_BYTES = 40 * 1024 * 1024
++
++@UnstableApi
++private fun bufferAheadLoadControl() = DefaultLoadControl.Builder()
++  .setBufferDurationsMs(
++    BUFFER_AHEAD_MS,
++    BUFFER_AHEAD_MS,
++    DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
++    DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
++  )
++  .setTargetBufferBytes(BUFFER_AHEAD_BYTES)
++  .setPrioritizeTimeOverSizeThresholds(false)
++  .build()
++
+ @UnstableApi
+ class AudioPlaylist(
+   context: Context,
+@@ -30,6 +48,7 @@ class AudioPlaylist(
+     .setAudioAttributes(AudioAttributes.DEFAULT, false)
+     .setHandleAudioBecomingNoisy(true)
+     .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory))
++    .setLoadControl(bufferAheadLoadControl())
+     .build(),
+   appContext = appContext,
+   updateInterval = updateInterval,
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/Playable.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/Playable.kt
 index 929df65..95b695d 100644
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/Playable.kt

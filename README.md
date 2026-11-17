@@ -113,9 +113,10 @@ Only upload music you own or have permission to share: everyone who installs the
 
 ### Patched expo-audio
 
-`patches/expo-audio+58.0.12.patch` fixes two bugs in expo-audio's Android code, and `package.json` builds expo-audio from source (`expo.autolinking.buildFromSource`) so the patch is used. `npm install` applies it (`postinstall: patch-package`).
+`patches/expo-audio+58.0.12.patch` changes three things in expo-audio's Android code, and `package.json` builds expo-audio from source (`expo.autolinking.buildFromSource`) so the patch is used. `npm install` applies it (`postinstall: patch-package`).
 - The lock screen session only received 2 of the player's events. It never learned that a song had been added, so the app crashed when the next song started (`Invalid PlayerInfo update`), and the lock screen's play button kept showing loading. Same fix as [expo/expo#52193](https://github.com/expo/expo/pull/52193).
 - `play()` did nothing after a playback error (no internet, missing file). It now prepares the player again, so the app retries the same song instead of rebuilding the player.
+- The playlist player loads up to 10 minutes (max 40 MB) ahead instead of Android's default 50 seconds. It loads the rest of the current song, then the next song, into memory, so a weak network doesn't make songs stall. Nothing is saved to the phone's storage.
 
 When upgrading expo-audio, check whether #52193 is included. If it is, drop that part of the patch. The `play()` part stays until expo-audio does the same.
 
