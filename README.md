@@ -4,7 +4,7 @@ Expo SDK 58 · React Native 0.88 · React Navigation 7 · expo-audio
 
 ## Download (Android)
 
-**[⬇ Download VibeRoom for Android (APK, 22 MB)](https://expo.dev/artifacts/eas/iCVCWV_1YPLu6X7hbtzYG4i2Dk4uZN044aanUeMyGjU.apk)**
+**[⬇ Download VibeRoom for Android (APK, 22 MB)](https://github.com/codersan18/tunely/releases/latest/download/VibeRoom.apk)**
 
 Open the link on your Android phone. When the download finishes, tap it to install, and allow "Install unknown apps" if Android asks. If Play Protect warns about an unknown app, tap **More details → Install anyway**.
 
@@ -109,7 +109,7 @@ Only upload music you own or have permission to share: everyone who installs the
 |---|---|
 | Songs (in the app's admin screen) | Live for everyone right away. |
 | App code (screens, design, features) | Push to `main`. GitHub Actions runs `eas update`, and every installed app picks it up the next time it is opened. The website at viberoom.expo.app is rebuilt at the same time. |
-| Icon, name, splash, or a package with native code | Build a new APK (`npx eas-cli@latest build --profile preview --platform android`) and share the new link. |
+| Icon, name, splash, or a package with native code | Build a new APK (`npx eas-cli@latest build --profile preview --platform android`) , then publish it as a new GitHub release with the file named `VibeRoom.apk` (`gh release create android-YYYY-MM-DD VibeRoom.apk --latest`). The download link above always gives the latest release. |
 
 ### Patched expo-audio
 
