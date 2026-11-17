@@ -23,7 +23,10 @@ const run = (cmd) => execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe',
 // installed doesn't have it on PATH yet.
 const GH_WINDOWS = 'C:\\Program Files\\GitHub CLI\\gh.exe';
 const gh = (() => {
-  try { run(process.platform === 'win32' ? 'where gh' : 'command -v gh'); return 'gh'; } catch (e) { /* not on PATH */ }
+  try {
+    execSync(process.platform === 'win32' ? 'where gh' : 'command -v gh', { stdio: 'ignore' }); // quiet check
+    return 'gh';
+  } catch (e) { /* not on PATH */ }
   if (process.platform === 'win32' && existsSync(GH_WINDOWS)) return `"${GH_WINDOWS}"`;
   console.error('GitHub CLI (gh) not found. Install it (winget install GitHub.cli), open a new terminal and run gh auth login.');
   process.exit(1);
