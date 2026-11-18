@@ -40,6 +40,25 @@ const runtime = build.runtime?.version || build.runtimeVersion;
 const commit = build.gitCommitHash;
 if (!runtime || !commit) throw new Error('The build has no runtime version or commit; can\'t release it.');
 
+// 1b. Over-the-air updates only reach an APK whose runtime matches theirs. If the newest update
+// (published by GitHub Actions) has a different runtime, this APK would never get updates: stop.
+try {
+  const found = [];
+  const walk = (v) => {
+    if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === 'object') { if (typeof v.runtimeVersion === 'string') found.push(v.runtimeVersion); Object.values(v).forEach(walk); }
+  };
+  walk(json(run('npx eas-cli@latest update:list --branch preview --limit 1 --non-interactive --json')));
+  if (found.length && !found.includes(runtime) && !process.argv.includes('--force')) {
+    console.error(`This build's runtime (${runtime.slice(0, 8)}) is not the one GitHub publishes updates for (${found[0].slice(0, 8)}),`);
+    console.error('so it would never receive over-the-air updates. Make sure the build was started from a clean, pushed');
+    console.error('commit (git status shows nothing), build again, then release. Add --force to release it anyway.');
+    process.exit(1);
+  }
+} catch (e) {
+  console.warn('Could not compare with the latest update; releasing anyway.');
+}
+
 // 2. Not released already?
 const releases = json(run(`${gh} release list -R ${REPO} --limit 50 --json tagName`)).map((r) => r.tagName);
 for (const tag of releases) {

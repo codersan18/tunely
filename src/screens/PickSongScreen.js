@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet, FlatList, TextInput, ActivityIndicat
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, formatTime } from '../theme';
-import { useLocalMusic } from '../context/LocalMusicContext';
+import { useLocalMusic, CATEGORIES } from '../context/LocalMusicContext';
 import { useCatalog } from '../context/CatalogContext';
 import { useLibrary } from '../context/LibraryContext';
 import Cover from '../components/Cover';
@@ -20,13 +20,14 @@ export default function PickSongScreen({ navigation }) {
   const { playableSource } = useLibrary();
   const [tab, setTab] = useState(local.status === 'ready' && !local.tracks.length ? 'library' : 'phone');
   const [query, setQuery] = useState('');
+  const [section, setSection] = useState('songs'); // On this phone: songs | whatsapp | others
 
   const list = useMemo(() => {
-    const all = tab === 'phone' ? local.tracks : songs;
+    const all = tab === 'phone' ? (local.groups.byCategory[section] || []) : songs;
     const q = query.trim().toLowerCase();
     if (!q) return all;
     return all.filter((t) => `${t.title} ${t.artist} ${t.album || ''}`.toLowerCase().includes(q));
-  }, [tab, local.tracks, songs, query]);
+  }, [tab, section, local.groups, songs, query]);
 
   const open = (t) => {
     const uri = t.local ? t.url : playableSource(t)?.uri;
@@ -88,6 +89,21 @@ export default function PickSongScreen({ navigation }) {
         })}
       </View>
 
+      {tab === 'phone' && local.status === 'ready' && (
+        <View style={styles.sections}>
+          {CATEGORIES.map((c) => {
+            const on = section === c.key;
+            const count = local.groups.byCategory[c.key]?.length || 0;
+            return (
+              <Pressable key={c.key} onPress={() => setSection(c.key)} style={[styles.section, on && styles.sectionOn]}>
+                <Ionicons name={c.icon} size={14} color={on ? colors.accent : colors.textMuted} />
+                <Text style={[styles.sectionText, on && { color: colors.accent }]}>{c.title} · {count}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
       <FlatList
         data={tab === 'phone' && local.status !== 'ready' ? [] : list}
         keyExtractor={(t) => t.id}
@@ -123,6 +139,10 @@ const styles = StyleSheet.create({
   tab: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 16, borderWidth: 1, borderColor: colors.textDim, paddingHorizontal: 12, paddingVertical: 6 },
   tabOn: { backgroundColor: colors.accent, borderColor: colors.accent },
   tabText: { color: colors.text, fontWeight: '600', fontSize: 13 },
+  sections: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingBottom: 10 },
+  section: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 14, backgroundColor: colors.surface, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: 'transparent' },
+  sectionOn: { borderColor: colors.accent },
+  sectionText: { color: colors.textMuted, fontWeight: '600', fontSize: 12 },
   list: { paddingHorizontal: 16, paddingBottom: 24 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 7 },
   art: { width: 48, height: 48, borderRadius: 4 },

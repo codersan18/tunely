@@ -126,6 +126,8 @@ Only upload music you own or have permission to share: everyone who installs the
 
 `scripts/release-apk.mjs` takes the newest finished Android build from EAS and publishes it as a GitHub release, with the file named `VibeRoom.apk`. The download link at the top always gives the latest release, so it never changes. It needs `npx eas-cli@latest login` and `gh auth login`.
 
+Start the EAS build from a clean, pushed commit (`git status` shows nothing). The runtime version is a fingerprint of the project files, so leftovers such as build folders give the APK a runtime that GitHub's updates never match. The script refuses to release such a build (`--force` releases it anyway). `.gitattributes` keeps line endings the same on Windows and on GitHub's Linux machines for the same reason, and `.fingerprintignore` leaves out the native modules' build caches.
+
 The release notes end with a hidden line, `<!-- runtime: <hash> -->`: the build's runtime version (a fingerprint of its native code). When the app opens, `src/utils/newVersion.js` reads the latest release from GitHub. If that runtime isn't the app's own, it shows **New version available**. "Later" hides it for 3 days. If you publish a release by hand, copy that line from the build's details on expo.dev (Runtime version), or the message won't show.
 
 ### Patched expo-audio
