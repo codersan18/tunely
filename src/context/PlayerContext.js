@@ -1,9 +1,16 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAudioPlaylist, useAudioPlaylistStatus, setAudioModeAsync } from 'expo-audio';
+import { useNetworkState, NetworkStateType } from 'expo-network';
 import { useLibrary } from './LibraryContext';
 import { useCatalog } from './CatalogContext';
+import { useSettings } from './SettingsContext';
 import { pickSimilar } from '../utils/smartShuffle';
-import { isLocalCover } from '../utils/localCover';
+import { isLocalCover, lockScreenCover } from '../utils/localCover';
+import { addListen } from '../utils/stats';
+import { getDeviceId } from '../utils/device';
+import { reportPlay } from '../api/catalog';
 
 const PlayerContext = createContext(null);
 
@@ -13,13 +20,16 @@ const nextRepeat = { off: 'all', all: 'one', one: 'off' };
 const nextShuffle = { off: 'on', on: 'smart', smart: 'off' };
 const SKIP_SECONDS = 30;     // leaving a song before this counts as "not this one" for smart shuffle
 const MAX_NATIVE_ITEMS = 60; // start a fresh native playlist after this many songs
+const RESUME_KEY = 'tunely:player:v1'; // queue, song and position, to carry on after a restart
+const SLEEP_FADE_MS = 30000;         // the sleep timer fades the music out over its last 30 s
+const PLAY_SECONDS = 30;             // listening this long (or half a short song) counts as a play
 
 // The same song can sit in the queue twice (e.g. "Play next" on a song already queued),
 // so every queue entry gets its own key `qid` on top of the song's `id`.
 let qidCounter = 0;
 const toEntry = (track, extra) => ({ ...track, ...extra, qid: `q${++qidCounter}` });
 
-// Lock screen: covers of songs on the phone are only in memory, which Android's lock screen can't load.
+// Lock screen: covers of songs on the phone are added once read from the file (see below).
 const metaOf = (t) => ({
   title: t.title, artist: t.artist, albumTitle: t.album || undefined,
   artworkUrl: (t.artwork && !isLocalCover(t.artwork) && t.artwork) || undefined,
@@ -39,6 +49,8 @@ const metaOf = (t) => ({
 export function PlayerProvider({ children }) {
   const { playableSource, addRecent, downloadedTracks } = useLibrary();
   const { songs, status: catalogStatus } = useCatalog();
+  const { transitions, dataSaver, speed } = useSettings();
+  const network = useNetworkState();
 
   // The native playlist. One for the whole app session: after a playback error, play() prepares it
   // again (patches/expo-audio+*.patch), so it never has to be rebuilt.
@@ -77,6 +89,9 @@ export function PlayerProvider({ children }) {
   // Latest values for code that runs from native events.
   const queueRef = useRef(queue); queueRef.current = queue;
   const indexRef = useRef(index); indexRef.current = index;
+  const shuffleRef = useRef(shuffleMode); shuffleRef.current = shuffleMode;
+  const repeatRef = useRef(repeat); repeatRef.current = repeat;
+  const resume = useRef(null); // { qid, position }: restored song, load it paused at this spot
 
   // Allow playback while the app is in the background / screen is off.
   useEffect(() => {
@@ -184,6 +199,13 @@ export function PlayerProvider({ children }) {
     const at = native.current.length - 1;
     playlist.skipTo(at);
     lastNativeIndex.current = playlist.currentIndex;
+    // Restored after a restart: wait at the same spot instead of starting to play.
+    const r = resume.current;
+    if (r && r.qid === currentTrack.qid) {
+      resume.current = null;
+      if (r.position > 1) playlist.seekTo(r.position).catch(() => {});
+      return;
+    }
     playlist.play();
   }, [currentTrack?.qid, playlist]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -222,7 +244,145 @@ export function PlayerProvider({ children }) {
     } catch (e) {
       // Lock screen controls are optional (not available in every environment).
     }
+    // A song on the phone: its cover is inside the file. Android's lock screen needs it as a file,
+    // so only the playing song's cover is written to the cache (one small image, replaced each time).
+    let alive = true;
+    if (isLocalCover(currentTrack.artwork)) {
+      lockScreenCover(currentTrack.artwork).then((artworkUrl) => {
+        if (!alive || !artworkUrl) return;
+        try { playlist.updateLockScreenMetadata({ ...metaOf(fresh(currentTrack)), artworkUrl }); } catch (e) { /* optional */ }
+      });
+    }
+    return () => { alive = false; };
   }, [currentTrack?.qid, playlist]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- carry on after a restart ----
+  // The queue, the song and the position are saved; the next time the app opens they come back,
+  // paused at the same spot (press play to continue).
+  const saveResume = useCallback(() => {
+    const q = queueRef.current;
+    const i = indexRef.current;
+    if (i < 0 || !q.length) return;
+    const from = Math.max(0, i - 100);
+    const strip = ({ qid, ...t }) => t;
+    AsyncStorage.setItem(RESUME_KEY, JSON.stringify({
+      queue: q.slice(from, i + 200).map(strip),
+      index: i - from,
+      position: playlist.currentTime || 0,
+      shuffleMode: shuffleRef.current,
+      repeat: repeatRef.current,
+      context: [...context.current].slice(0, 3000),
+    })).catch(() => {});
+  }, [playlist]);
+
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(RESUME_KEY).then((raw) => {
+      if (cancelled || !raw || queueRef.current.length) return; // something is already playing
+      const s = JSON.parse(raw);
+      if (!s?.queue?.length) return;
+      const q = s.queue.map((t) => toEntry(t));
+      const i = Math.min(Math.max(0, s.index | 0), q.length - 1);
+      resume.current = { qid: q[i].qid, position: s.position || 0 };
+      context.current = new Set(s.context?.length ? s.context : q.map((t) => t.id));
+      if (nextShuffle[s.shuffleMode]) setShuffleMode(s.shuffleMode);
+      if (nextRepeat[s.repeat]) setRepeat(s.repeat);
+      setQueue(q);
+      setIndex(i);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (index < 0) return undefined;
+    const t = setTimeout(saveResume, 1000);
+    return () => clearTimeout(t);
+  }, [queue, index, shuffleMode, repeat, saveResume]);
+
+  // ---- listening: stats, play counts, position saving ----
+  // Time actually listened to the current entry; seeks don't count.
+  const listen = useRef({ qid: null, track: null, seconds: 0, total: 0, counted: false, last: 0, saved: 0 });
+  const flushListen = useCallback(() => {
+    const l = listen.current;
+    if (l.track && l.seconds > 0) addListen(l.track, l.seconds);
+    l.seconds = 0;
+  }, []);
+
+  useEffect(() => {
+    const l = listen.current;
+    const entry = native.current[playlist.currentIndex];
+    const time = status.currentTime || 0;
+    if (!entry) return;
+    if (entry.qid !== l.qid) {
+      flushListen();
+      Object.assign(l, { qid: entry.qid, track: fresh(entry), seconds: 0, total: 0, counted: false, last: time });
+      return;
+    }
+    const step = time - l.last;
+    l.last = time;
+    if (!status.playing || step <= 0 || step > 3) return;
+    l.seconds += step;
+    l.total += step;
+    const needed = status.duration > 0 ? Math.min(PLAY_SECONDS, status.duration / 2) : PLAY_SECONDS;
+    if (!l.counted && l.total >= needed) {
+      l.counted = true;
+      addListen(l.track, 0, true);
+      if (l.track.songId) getDeviceId().then((d) => reportPlay(l.track.songId, d)).catch(() => {});
+    }
+    if (l.seconds >= 60) flushListen();
+    if (Date.now() - l.saved > 15000) { l.saved = Date.now(); saveResume(); }
+  }, [status.currentTime, status.playing]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Going to the background (or being closed): save everything now.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') { flushListen(); saveResume(); }
+    });
+    return () => sub.remove();
+  }, [flushListen, saveResume]);
+
+  // ---- speed ----
+  useEffect(() => {
+    try { playlist.playbackRate = speed || 1; } catch (e) { /* ignore */ }
+  }, [speed, playlist, currentTrack?.qid]);
+
+  // ---- data saver ----
+  // On mobile data, the player loads only ~50 s ahead instead of the whole song and the next one
+  // (patches/expo-audio+*.patch adds this switch).
+  const onMobileData = network?.type === NetworkStateType.CELLULAR;
+  useEffect(() => {
+    try { playlist.dataSaver = !!(dataSaver && onMobileData); } catch (e) { /* older app build */ }
+  }, [dataSaver, onMobileData, playlist]);
+
+  // ---- volume: smooth transitions and the sleep timer's fade-out ----
+  // Driven by the player's own status updates (twice a second), which keep coming with the screen off.
+  const volume = useRef(1);
+  const setVolume = useCallback((v) => {
+    if (Math.abs(v - volume.current) < 0.01) return;
+    volume.current = v;
+    try { playlist.volume = v; } catch (e) { /* ignore */ }
+  }, [playlist]);
+
+  useEffect(() => {
+    if (!status.playing) { setVolume(1); return; }
+    let v = 1;
+    if (sleepAt) {
+      const left = sleepAt - Date.now();
+      if (left <= 0) { // works with the screen off, unlike a timer
+        playlist.pause();
+        setSleepAt(null);
+        setVolume(1);
+        return;
+      }
+      v = Math.min(v, left / SLEEP_FADE_MS);
+    }
+    const dur = status.duration || 0;
+    const pos = status.currentTime || 0;
+    if (transitions > 0 && dur > transitions * 4 && repeat !== 'one') {
+      v = Math.min(v, Math.max(0.05, pos / (transitions / 2)), Math.max(0.05, (dur - pos) / transitions));
+    }
+    setVolume(Math.max(0, Math.min(1, v)));
+  }, [status.currentTime, status.playing, sleepAt, transitions, repeat]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // A playback error (the network dropped, or the song's file is gone): try the same song again a
   // moment later, from the same spot. If it fails again, move on to the next song. After a few songs

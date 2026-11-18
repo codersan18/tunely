@@ -45,7 +45,38 @@ export async function fetchSongs(signal) {
   return songs.map(toTrack);
 }
 
+// ---- plays, popular songs and song requests (anyone) ----
+
+// Count one play of a library song. `device` is this install's random ID (utils/device.js);
+// the server counts a song once per device per 10 minutes.
+export function reportPlay(songId, device) {
+  return request('/plays', { method: 'POST', body: { songId, device } });
+}
+
+// Most played library songs lately: [{ id: '<server song id>', plays }].
+export async function fetchPopular(signal) {
+  const { songs } = await request('/popular?days=7&limit=20', { signal });
+  return songs;
+}
+
+export function sendSongRequest(device, { title, artist, note }) {
+  return request('/requests', { method: 'POST', body: { device, title, artist, note } });
+}
+
 // ---- admin ----
+
+export async function listRequests(adminKey) {
+  const { requests } = await request('/admin/requests', { adminKey });
+  return requests;
+}
+
+export function setRequestDone(adminKey, id, done) {
+  return request(`/admin/requests/${id}`, { method: 'PATCH', adminKey, body: { done } });
+}
+
+export function deleteRequest(adminKey, id) {
+  return request(`/admin/requests/${id}`, { method: 'DELETE', adminKey });
+}
 
 export async function verifyAdmin(adminKey) {
   try {

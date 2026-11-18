@@ -24,7 +24,7 @@ export default function PlaylistScreen({ route, navigation }) {
     liked, playlists, downloadedTracks, downloadedBytes, deletePlaylist, renamePlaylist,
     isDownloaded, isDownloading, downloadMany, removeDownload,
   } = useLibrary();
-  const { songs, artists, albums, status } = useCatalog();
+  const { songs, artists, albums, popular, status } = useCatalog();
   const local = useLocalMusic();
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -47,9 +47,32 @@ export default function PlaylistScreen({ route, navigation }) {
         description: 'Songs saved on your phone · play without internet',
       };
     }
+    // An artist, album or folder of songs on the phone: device:<artist|album|folder>:<name>
+    const dev = playlistId.match(/^device:(artist|album|folder):(.*)$/);
+    if (dev) {
+      const [, kind, name] = dev;
+      const key = name.toLowerCase();
+      const songsOnly = local.groups.byCategory.songs;
+      const tracks = kind === 'folder'
+        ? local.tracks.filter((t) => t.folder.toLowerCase() === key)
+        : kind === 'album'
+          ? songsOnly.filter((t) => t.album.toLowerCase() === key)
+          : songsOnly.filter((t) => t.artist.split(/\s*,\s*/).some((a) => a.toLowerCase() === key));
+      const look = { artist: ['Artist', 'person', '#4A2A5C'], album: ['Album', 'disc', '#5C3A1F'], folder: ['Folder', 'folder', '#1F4D5C'] }[kind];
+      return {
+        id: playlistId, title: name, description: `${look[0]} · on this phone`, color: look[2], icon: look[1],
+        round: kind === 'artist', artwork: tracks[0]?.artwork, tracks,
+      };
+    }
     if (isUser) {
       const p = playlists.find((x) => x.id === playlistId);
       return p && { ...p, description: 'Your playlist', color: '#3A3A46', artwork: p.tracks[0]?.artwork, icon: 'musical-notes' };
+    }
+    if (playlistId === 'popular') {
+      return {
+        id: 'popular', title: 'Popular this week', color: '#7A2E3B', icon: 'flame', tracks: popular,
+        description: 'Most played by everyone on VibeRoom in the last 7 days',
+      };
     }
     if (playlistId === 'all') {
       return { id: 'all', title: 'All songs', description: 'Everything in the VibeRoom library', color: '#2A5C3B', icon: 'musical-notes', tracks: songs };
@@ -82,7 +105,7 @@ export default function PlaylistScreen({ route, navigation }) {
       };
     }
     return null;
-  }, [playlistId, isUser, songs, artists, albums, liked, playlists, downloadedTracks, downloadedBytes, local.tracks]);
+  }, [playlistId, isUser, songs, artists, albums, popular, liked, playlists, downloadedTracks, downloadedBytes, local.tracks, local.groups]);
 
   if (!playlist) {
     // e.g. the playlist was just deleted
@@ -94,7 +117,7 @@ export default function PlaylistScreen({ route, navigation }) {
   const online = list.filter((t) => !t.local); // songs on the phone don't need downloading
   const allDownloaded = online.length > 0 && online.every((t) => isDownloaded(t.id));
   const anyDownloading = online.some((t) => isDownloading(t.id));
-  const isDevice = playlistId === 'device';
+  const isDevice = playlistId === 'device' || playlistId.startsWith('device:');
 
   const onPlay = () => {
     if (!list.length) return;

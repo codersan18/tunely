@@ -11,6 +11,7 @@ import TrackOptions from '../components/TrackOptions';
 import SleepTimerSheet from '../components/SleepTimerSheet';
 import ShuffleButton from '../components/ShuffleButton';
 import { vibeLabel } from '../utils/smartShuffle';
+import { useSettings, SPEED_OPTIONS } from '../context/SettingsContext';
 
 // Everything on the player screen except the artwork and its spacing takes roughly this much height.
 const NON_ART_HEIGHT = 300;
@@ -73,6 +74,8 @@ export default function PlayerScreen({ navigation }) {
     smartShuffle, upNext, repeat, cycleRepeat, sleepAt, sleepAfterTrack,
   } = usePlayer();
   const { isLiked, toggleLike, isDownloaded } = useLibrary();
+  const { speed, set: setSettings } = useSettings();
+  const nextSpeed = () => setSettings({ speed: SPEED_OPTIONS[(SPEED_OPTIONS.indexOf(speed) + 1) % SPEED_OPTIONS.length] || 1 });
   const [menu, setMenu] = useState(false);
   const [sleepMenu, setSleepMenu] = useState(false);
   const art = useArtLayout();
@@ -167,6 +170,9 @@ export default function PlayerScreen({ navigation }) {
               <Text style={styles.sleepText}>{Math.max(1, Math.round((sleepAt - Date.now()) / 60000))}m</Text>
             )}
           </Pressable>
+          <Pressable onPress={nextSpeed} hitSlop={10} style={styles.footerBtn} accessibilityLabel="Playback speed">
+            <Text style={[styles.speedText, speed !== 1 && { color: colors.accent }]}>{`${speed}×`}</Text>
+          </Pressable>
           {smartShuffle && upNext[0] && (
             <Pressable onPress={() => navigation.navigate('Queue')} style={styles.smartPill}>
               <Ionicons name="sparkles" size={14} color={colors.accent} />
@@ -209,6 +215,7 @@ const styles = StyleSheet.create({
   playBtn: { width: 68, height: 68, borderRadius: 34, backgroundColor: colors.text, alignItems: 'center', justifyContent: 'center' },
   footerBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   sleepText: { color: colors.accent, fontSize: 12, fontWeight: '700' },
+  speedText: { color: colors.textMuted, fontSize: 14, fontWeight: '800' },
   footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 'auto', marginBottom: 16 },
   smartPill: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, backgroundColor: 'rgba(46,230,166,0.12)' },
   smartText: { flex: 1, color: colors.text, fontSize: 12, fontWeight: '600' },

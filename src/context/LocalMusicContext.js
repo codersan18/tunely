@@ -28,9 +28,30 @@ function fromFilename(filename) {
   return m ? { artist: m[1], title: m[2] } : { artist: '', title: base };
 }
 
+// Where the file lives decides its section: WhatsApp audio, Others (recordings, calls, Telegram,
+// podcasts…) or Songs (Music, Download and everything else).
+const OTHER_FOLDERS = /(^|\/)(recordings?|call[ _-]?(recordings?|rec)?|calls|voice[ _-]?(notes|recorder|recordings?)|sound[ _-]?recorder|recorder|record|notifications|ringtones|alarms|podcasts|audiobooks|telegram[^/]*|signal|snapchat|instagram)(\/|$)/i;
+export const CATEGORIES = [
+  { key: 'songs', title: 'Songs', icon: 'musical-notes' },
+  { key: 'whatsapp', title: 'WhatsApp audio', icon: 'logo-whatsapp' },
+  { key: 'others', title: 'Others', icon: 'folder-open' },
+];
+
+function placeOf(uri) {
+  let path = uri.replace(/^file:\/\//, '');
+  try { path = decodeURIComponent(path); } catch (e) { /* keep as is */ }
+  const parts = path.split('/').filter(Boolean);
+  let folder = parts.length > 1 ? parts[parts.length - 2] : 'Phone';
+  // WhatsApp voice notes sit in dated folders ("202611"): name them after the folder above.
+  if (/^\d+$/.test(folder) && parts.length > 2) folder = parts[parts.length - 3];
+  const category = /\/whatsapp( business)?\//i.test(path) ? 'whatsapp' : OTHER_FOLDERS.test(path) ? 'others' : 'songs';
+  return { folder, category };
+}
+
 const toTrack = (meta, uri, tags) => {
   const guess = fromFilename(meta.filename);
   return {
+    ...placeOf(uri),
     id: `local:${meta.id}`,
     title: tags?.title || guess.title,
     artist: tags?.artist || guess.artist || 'Unknown artist',
@@ -155,7 +176,31 @@ export function LocalMusicProvider({ children }) {
   }, [status, scan]);
 
   const rescan = useCallback(() => scan({ force: true }), [scan]);
-  const value = useMemo(() => ({ status, tracks, requestAccess, rescan }), [status, tracks, requestAccess, rescan]);
+
+  // Sections and groups for the "On this phone" screen.
+  const groups = useMemo(() => {
+    const byCategory = { songs: [], whatsapp: [], others: [] };
+    const artists = new Map();
+    const albums = new Map();
+    const folders = new Map();
+    const add = (map, name, t, extra) => {
+      const g = map.get(name.toLowerCase()) || { name, count: 0, artwork: t.artwork, ...extra };
+      g.count += 1;
+      map.set(name.toLowerCase(), g);
+    };
+    for (const t of tracks) {
+      byCategory[t.category].push(t);
+      if (t.category === 'songs') {
+        t.artist.split(/\s*,\s*/).filter(Boolean).forEach((a) => add(artists, a, t));
+        if (t.album) add(albums, t.album, t, { artist: t.artist });
+      }
+      add(folders, t.folder, t);
+    }
+    const sorted = (m) => [...m.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    return { byCategory, artists: sorted(artists), albums: sorted(albums), folders: sorted(folders) };
+  }, [tracks]);
+
+  const value = useMemo(() => ({ status, tracks, groups, requestAccess, rescan }), [status, tracks, groups, requestAccess, rescan]);
   return <LocalMusicContext.Provider value={value}>{children}</LocalMusicContext.Provider>;
 }
 

@@ -12,12 +12,18 @@ in the Neon project **tunely** (`round-pond-23269926`, branch `main` = `br-polis
 | Method | Path | Who | What |
 |---|---|---|---|
 | GET | `/songs` | anyone | all songs, newest first |
+| POST | `/plays` | anyone | count a play `{ songId, device }` (once per device + song per 10 min) |
+| GET | `/popular?days=7&limit=20` | anyone | most played songs lately `[{ id, plays }]` |
+| POST | `/requests` | anyone | ask for a song `{ device, title, artist?, note? }` (5 a day per device) |
 | POST | `/admin/verify` | admin | check the password |
 | POST | `/admin/prepare` | admin | duplicate check, returns 15-minute upload URLs |
 | POST | `/admin/songs` | admin | save the song once the file is uploaded |
 | PATCH | `/admin/songs/:id` | admin | edit title, artist, album, genre, language, mood |
 | DELETE | `/admin/songs/:id` | admin | remove a song and its files |
 | GET | `/admin/storage` | admin | how full object storage is (uploads stop at 90%) |
+| GET | `/admin/requests` | admin | song requests, open ones first |
+| PATCH | `/admin/requests/:id` | admin | `{ done: true/false }` |
+| DELETE | `/admin/requests/:id` | admin | remove a request |
 | GET | `/admin/optimize/pending` | admin | songs not yet compressed |
 | POST | `/admin/optimize/:id/prepare` | admin | upload URLs for the compressed file and embedded cover |
 | POST | `/admin/optimize/:id/done` | admin | switch to the compressed file, delete the original |
@@ -64,4 +70,25 @@ CREATE TABLE songs (
   CONSTRAINT songs_same_file UNIQUE (content_hash),
   CONSTRAINT songs_same_title_artist UNIQUE (title_key, artist_key)
 );
+```
+
+```sql
+-- Plays (for "Popular this week") and song requests
+CREATE TABLE plays (
+  id bigserial PRIMARY KEY,
+  song_id uuid NOT NULL REFERENCES songs(id) ON DELETE CASCADE,
+  device text NOT NULL,                       -- random install ID from the app
+  played_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX plays_recent ON plays (played_at, song_id);
+CREATE INDEX plays_device_song ON plays (device, song_id, played_at DESC);
+
+CREATE TABLE song_requests (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  title text NOT NULL, artist text, note text,
+  device text NOT NULL,
+  done boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX song_requests_device ON song_requests (device, created_at DESC);
 ```

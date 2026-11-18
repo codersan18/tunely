@@ -2,6 +2,9 @@
 //
 // Public:
 //   GET    /songs                 -> every song, newest first
+//   POST   /plays                 -> count a play { songId, device } (once per device + song per 10 min)
+//   GET    /popular?days=&limit=  -> most played songs lately [{ id, plays }]
+//   POST   /requests              -> a listener asks for a song { device, title, artist?, note? }
 // Admin (header "x-admin-key: <ADMIN_KEY>"):
 //   POST   /admin/verify          -> 200 if the key is right
 //   POST   /admin/prepare         -> duplicate check + short-lived upload URLs
@@ -9,6 +12,9 @@
 //   PATCH  /admin/songs/:id       -> edit a song's details (title, artist, album, genre, language, mood)
 //   DELETE /admin/songs/:id       -> remove a song and its files
 //   GET    /admin/storage         -> how full object storage is; uploads stop at 90%
+//   GET    /admin/requests        -> song requests, open ones first
+//   PATCH  /admin/requests/:id    -> { done: true|false }
+//   DELETE /admin/requests/:id    -> remove a request
 // Song compression (run by .github/workflows/optimize.yml):
 //   GET    /admin/optimize/pending        -> songs not yet compressed
 //   POST   /admin/optimize/:id/prepare    -> upload URLs for the compressed audio (+ cover found in the file)
@@ -380,6 +386,79 @@ async function deleteSong(id) {
   return json(200, { deleted: id });
 }
 
+// ---------- plays and popular songs ----------
+// Tables: plays (song_id, device, played_at), song_requests (see backend/README.md).
+
+const deviceOk = (d) => typeof d === 'string' && /^[a-z0-9]{6,40}$/i.test(d);
+
+async function addPlay(body) {
+  const songId = clean(body.songId, 40);
+  if (!idOk(songId) || !deviceOk(body.device)) return json(400, { error: 'bad_request' });
+  // Once per device + song per 10 minutes, and only for songs that exist.
+  await sql(
+    `INSERT INTO plays (song_id, device)
+       SELECT $1::uuid, $2
+        WHERE EXISTS (SELECT 1 FROM songs WHERE id = $1::uuid)
+          AND NOT EXISTS (SELECT 1 FROM plays WHERE device = $2 AND song_id = $1::uuid
+                                              AND played_at > now() - interval '10 minutes')`,
+    [songId, body.device],
+  );
+  return json(200, { ok: true });
+}
+
+async function popular(url) {
+  const days = Math.min(90, Math.max(1, Number(url.searchParams.get('days')) || 7));
+  const limit = Math.min(50, Math.max(1, Number(url.searchParams.get('limit')) || 20));
+  const rows = await sql(
+    `SELECT song_id AS id, count(*)::int AS plays FROM plays
+      WHERE played_at > now() - make_interval(days => $1)
+      GROUP BY song_id ORDER BY plays DESC, max(played_at) DESC LIMIT $2`,
+    [days, limit],
+  );
+  return json(200, { songs: rows.map((r) => ({ id: r.id, plays: Number(r.plays) })) });
+}
+
+// ---------- song requests ----------
+
+const toRequest = (r) => ({
+  id: r.id, title: r.title, artist: r.artist, note: r.note,
+  done: r.done === true || r.done === 't' || r.done === 'true', createdAt: r.created_at,
+});
+
+async function addRequest(body) {
+  const title = clean(body.title, 120);
+  if (!title || !deviceOk(body.device)) return json(400, { error: 'bad_request', message: 'Please type the song title.' });
+  const recent = await sql(
+    `SELECT count(*)::int AS n FROM song_requests WHERE device = $1 AND created_at > now() - interval '1 day'`,
+    [body.device],
+  );
+  if (Number(recent[0]?.n) >= 5) {
+    return json(429, { error: 'too_many', message: 'You can ask for 5 songs a day. Try again tomorrow.' });
+  }
+  const rows = await sql(
+    'INSERT INTO song_requests (title, artist, note, device) VALUES ($1, $2, $3, $4) RETURNING *',
+    [title, clean(body.artist, 120) || null, clean(body.note, 300) || null, body.device],
+  );
+  return json(200, { request: toRequest(rows[0]) });
+}
+
+async function listRequests() {
+  const rows = await sql('SELECT * FROM song_requests ORDER BY done, created_at DESC LIMIT 300');
+  return json(200, { requests: rows.map(toRequest) });
+}
+
+async function updateRequest(id, body) {
+  if (!idOk(id)) return json(400, { error: 'bad_id' });
+  const rows = await sql('UPDATE song_requests SET done = $2 WHERE id = $1 RETURNING *', [id, body.done === true]);
+  return rows.length ? json(200, { request: toRequest(rows[0]) }) : json(404, { error: 'not_found' });
+}
+
+async function removeRequest(id) {
+  if (!idOk(id)) return json(400, { error: 'bad_id' });
+  const rows = await sql('DELETE FROM song_requests WHERE id = $1 RETURNING id', [id]);
+  return rows.length ? json(200, { deleted: id }) : json(404, { error: 'not_found' });
+}
+
 // ---------- automatic compression ----------
 // After a song is added, ask GitHub to run the "Compress new songs" workflow straight away
 // (.github/workflows/optimize.yml). Needs GITHUB_TOKEN: a fine-grained token with
@@ -428,6 +507,9 @@ async function route(request) {
     try {
       if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
       if (request.method === 'GET' && (path === '/songs' || path === '/')) return await listSongs();
+      if (request.method === 'POST' && path === '/plays') return await addPlay(await request.json());
+      if (request.method === 'GET' && path === '/popular') return await popular(url);
+      if (request.method === 'POST' && path === '/requests') return await addRequest(await request.json());
 
       if (path.startsWith('/admin/')) {
         if (!isAdmin(request)) {
@@ -438,6 +520,10 @@ async function route(request) {
         if (request.method === 'POST' && path === '/admin/prepare') return await prepare(await request.json());
         if (request.method === 'POST' && path === '/admin/songs') return await saveSong(await request.json());
         if (request.method === 'GET' && path === '/admin/storage') return await storageStatus();
+        if (request.method === 'GET' && path === '/admin/requests') return await listRequests();
+        const rq = path.match(/^\/admin\/requests\/([^/]+)$/);
+        if (request.method === 'PATCH' && rq) return await updateRequest(rq[1], await request.json());
+        if (request.method === 'DELETE' && rq) return await removeRequest(rq[1]);
         if (request.method === 'GET' && path === '/admin/optimize/pending') return await optimizePending();
         const o = path.match(/^\/admin\/optimize\/([^/]+)\/(prepare|done)$/);
         if (request.method === 'POST' && o) {

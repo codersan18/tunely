@@ -7,7 +7,9 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { colors } from '../theme';
 import { useCatalog } from '../context/CatalogContext';
-import { verifyAdmin, uploadSong, deleteSong, updateSong, getStorage } from '../api/catalog';
+import {
+  verifyAdmin, uploadSong, deleteSong, updateSong, getStorage, listRequests, setRequestDone, deleteRequest,
+} from '../api/catalog';
 import Cover from '../components/Cover';
 import ChipPicker from '../components/ChipPicker';
 import { LANGUAGES, MOODS } from '../utils/smartShuffle';
@@ -145,7 +147,7 @@ function SongEditor({ song, adminKey, onSaved, onCancel, onLocked }) {
 
 // ---------- Unlocked ----------
 
-export default function AdminScreen({ navigation }) {
+export default function AdminScreen({ navigation, route }) {
   const { songs, refresh } = useCatalog();
   const [adminKey, setAdminKey] = useState(undefined); // undefined = still checking
   const [items, setItems] = useState([]);
@@ -199,10 +201,40 @@ export default function AdminScreen({ navigation }) {
   const pickSongs = async () => {
     const res = await DocumentPicker.getDocumentAsync({ type: 'audio/*', multiple: true, copyToCacheDirectory: true });
     if (res.canceled || !res.assets?.length) return;
+    await addAssets(res.assets);
+  };
+
+  // A song on the phone sent here from its ••• menu ("Add to VibeRoom library").
+  const sentFiles = route.params?.files;
+  useEffect(() => {
+    if (!adminKey || !sentFiles?.length) return;
+    navigation.setParams({ files: undefined });
+    setTab('add');
+    addAssets(sentFiles);
+  }, [adminKey, sentFiles]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Song requests from listeners.
+  const [requests, setRequests] = useState(null);
+  const loadRequests = useCallback(() => {
+    if (!adminKey) return;
+    listRequests(adminKey).then(setRequests).catch(() => setRequests((r) => r || []));
+  }, [adminKey]);
+  useEffect(() => { loadRequests(); }, [loadRequests]);
+  const openRequests = (requests || []).filter((r) => !r.done).length;
+  const markRequest = (r, done) => {
+    setRequests((list) => list.map((x) => (x.id === r.id ? { ...x, done } : x)));
+    setRequestDone(adminKey, r.id, done).catch(loadRequests);
+  };
+  const dropRequest = (r) => {
+    setRequests((list) => list.filter((x) => x.id !== r.id));
+    deleteRequest(adminKey, r.id).catch(loadRequests);
+  };
+
+  const addAssets = async (assets) => {
     setPreparing(true);
     try {
       const added = [];
-      for (const a of res.assets) {
+      for (const a of assets) {
         let hash = null;
         try {
           hash = await fileHash(a);
@@ -312,7 +344,7 @@ export default function AdminScreen({ navigation }) {
       ) : (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.tabs}>
-            {[['add', 'Add songs'], ['manage', `Library (${songs.length})`]].map(([k, label]) => (
+            {[['add', 'Add songs'], ['manage', `Library (${songs.length})`], ['requests', `Requests${openRequests ? ` (${openRequests})` : ''}`]].map(([k, label]) => (
               <Pressable key={k} onPress={() => setTab(k)} style={[styles.chip, tab === k && styles.chipOn]}>
                 <Text style={[styles.chipText, tab === k && { color: colors.bg }]}>{label}</Text>
               </Pressable>
@@ -433,6 +465,35 @@ export default function AdminScreen({ navigation }) {
               {items.some((it) => it.status === 'done') && !uploading && (
                 <Pressable onPress={() => setItems((l) => l.filter((it) => it.status !== 'done'))} style={{ alignSelf: 'center', padding: 12 }}>
                   <Text style={styles.lockText}>Clear finished</Text>
+                </Pressable>
+              )}
+            </ScrollView>
+          ) : tab === 'requests' ? (
+            <ScrollView contentContainerStyle={styles.body}>
+              {requests === null && <ActivityIndicator color={colors.accent} style={{ marginTop: 24 }} />}
+              {requests?.length === 0 && (
+                <Text style={styles.hint}>No requests yet. Listeners can ask for songs from Search or Settings → Ask for a song.</Text>
+              )}
+              {(requests || []).map((r) => (
+                <View key={r.id} style={[styles.songRow, r.done && { opacity: 0.5 }]}>
+                  <Ionicons name={r.done ? 'checkmark-circle' : 'musical-note-outline'} size={22} color={r.done ? colors.accent : colors.textMuted} />
+                  <View style={{ flex: 1 }}>
+                    <Text numberOfLines={2} style={styles.songTitle}>{r.title}</Text>
+                    <Text numberOfLines={3} style={styles.songSub}>
+                      {[r.artist, r.note, new Date(r.createdAt).toLocaleDateString()].filter(Boolean).join(' · ')}
+                    </Text>
+                  </View>
+                  <Pressable onPress={() => markRequest(r, !r.done)} hitSlop={10} accessibilityLabel={r.done ? 'Mark as not done' : 'Mark as added'}>
+                    <Ionicons name={r.done ? 'arrow-undo-outline' : 'checkmark-done-outline'} size={22} color={colors.accent} />
+                  </Pressable>
+                  <Pressable onPress={() => dropRequest(r)} hitSlop={10} accessibilityLabel="Delete request">
+                    <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                  </Pressable>
+                </View>
+              ))}
+              {requests?.length > 0 && (
+                <Pressable onPress={loadRequests} style={{ alignSelf: 'center', padding: 12 }}>
+                  <Text style={styles.lockText}>Refresh</Text>
                 </Pressable>
               )}
             </ScrollView>

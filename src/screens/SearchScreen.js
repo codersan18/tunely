@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
 import { useCatalog } from '../context/CatalogContext';
 import { useLibrary } from '../context/LibraryContext';
+import { useLocalMusic } from '../context/LocalMusicContext';
 import TrackRow from '../components/TrackRow';
 import Cover from '../components/Cover';
 
@@ -16,13 +17,14 @@ const matches = (t, s) => [t.title, t.artist, t.album, t.genre, t.language, t.mo
 export default function SearchScreen({ navigation }) {
   const { songs, artists, albums, genres } = useCatalog();
   const { downloadedTracks } = useLibrary();
+  const { tracks: phoneTracks } = useLocalMusic();
   const [query, setQuery] = useState('');
   const q = query.trim().toLowerCase();
 
-  // Library songs, plus downloaded songs in case the list hasn't loaded.
+  // Library songs, downloaded songs (in case the list hasn't loaded) and songs saved on the phone.
   const all = useMemo(
-    () => [...new Map([...songs, ...downloadedTracks].map((t) => [t.id, t])).values()],
-    [songs, downloadedTracks],
+    () => [...new Map([...songs, ...downloadedTracks, ...phoneTracks].map((t) => [t.id, t])).values()],
+    [songs, downloadedTracks, phoneTracks],
   );
   const results = useMemo(() => (q ? all.filter((t) => matches(t, q)) : []), [all, q]);
   const artistHits = useMemo(() => (q ? artists.filter((a) => a.name.toLowerCase().includes(q)).slice(0, 5) : []), [artists, q]);
@@ -120,6 +122,12 @@ export default function SearchScreen({ navigation }) {
             </View>
           )}
           ListEmptyComponent={!artistHits.length && !albumHits.length && <Text style={styles.empty}>No songs match "{query.trim()}".</Text>}
+          ListFooterComponent={(
+            <Pressable onPress={() => navigation.navigate('Request', { title: query.trim() })} style={styles.ask}>
+              <Ionicons name="chatbubble-ellipses-outline" size={20} color={colors.accent} />
+              <Text style={styles.askText}>Can't find it? Ask for "{query.trim()}" to be added</Text>
+            </Pressable>
+          )}
           renderItem={({ item }) => <TrackRow track={item} list={results} />}
         />
       )}
@@ -140,4 +148,6 @@ const styles = StyleSheet.create({
   genreText: { color: colors.text, fontSize: 17, fontWeight: '800' },
   genreSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 },
   empty: { color: colors.textMuted, textAlign: 'center', marginTop: 40, paddingHorizontal: 24 },
+  ask: { flexDirection: 'row', alignItems: 'center', gap: 10, justifyContent: 'center', paddingVertical: 20 },
+  askText: { color: colors.accent, fontWeight: '700', fontSize: 14, flexShrink: 1 },
 });

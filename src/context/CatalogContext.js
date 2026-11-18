@@ -1,11 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fetchSongs } from '../api/catalog';
+import { fetchSongs, fetchPopular } from '../api/catalog';
 
 // The shared song library everyone sees. Loaded from the server and saved on the
 // phone, so the list still shows when offline (downloaded songs still play).
 
 const CACHE_KEY = 'tunely:catalog:v1';
+const POPULAR_KEY = 'tunely:popular:v1';
 const CatalogContext = createContext(null);
 
 export function CatalogProvider({ children }) {
@@ -93,8 +94,24 @@ export function CatalogProvider({ children }) {
     return [...map.values()].sort((a, b) => b.count - a.count);
   }, [songs]);
 
-  const value = useMemo(() => ({ songs, artists, albums, genres, status, refreshing, refresh }),
-    [songs, artists, albums, genres, status, refreshing, refresh]);
+  // Most played by everyone in the last 7 days (counted by the server). Saved for offline use.
+  const [popularIds, setPopularIds] = useState([]); // [{ id: server song id, plays }]
+  useEffect(() => {
+    AsyncStorage.getItem(POPULAR_KEY).then((raw) => { if (raw) setPopularIds((cur) => (cur.length ? cur : JSON.parse(raw))); }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (status !== 'ok') return;
+    fetchPopular()
+      .then((list) => { setPopularIds(list); AsyncStorage.setItem(POPULAR_KEY, JSON.stringify(list)).catch(() => {}); })
+      .catch(() => { /* keep the last list */ });
+  }, [status, songs]);
+  const popular = useMemo(() => {
+    const byId = new Map(songs.map((s) => [s.songId, s]));
+    return popularIds.map((p) => byId.get(p.id) && { ...byId.get(p.id), plays: p.plays }).filter(Boolean);
+  }, [songs, popularIds]);
+
+  const value = useMemo(() => ({ songs, artists, albums, genres, popular, status, refreshing, refresh }),
+    [songs, artists, albums, genres, popular, status, refreshing, refresh]);
   return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>;
 }
 

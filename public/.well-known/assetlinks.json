@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.tunely.app",
+      "sha256_cert_fingerprints": [
+        "AD:AF:E5:5A:8A:5D:B9:82:D5:F3:79:08:21:27:06:C8:98:52:E4:8D:42:F7:1F:53:E1:65:C7:28:EF:E3:B3:EF"
+      ]
+    }
+  }
+]

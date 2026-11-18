@@ -37,7 +37,8 @@ function Carousel({ title, data, renderItem, keyExtractor }) {
 export default function HomeScreen({ navigation }) {
   const { playTrack } = usePlayer();
   const { recent, liked, downloadedTracks, playlists } = useLibrary();
-  const { songs, artists, albums, status, refreshing, refresh } = useCatalog();
+  const { songs, artists, albums, popular, status, refreshing, refresh } = useCatalog();
+  const top = popular.slice(0, 15);
   const open = (playlistId) => navigation.navigate('Playlist', { playlistId });
 
   // Quick-access tiles: the user's own collections.
@@ -99,6 +100,22 @@ export default function HomeScreen({ navigation }) {
       {status === 'loading' && !songs.length && <ActivityIndicator color={colors.accent} style={{ marginTop: 32 }} />}
 
       <Carousel title="Jump back in" data={jumpBack} keyExtractor={(t) => t.id} renderItem={songCard(jumpBack, true)} />
+      {top.length > 0 && (
+        <Pressable onPress={() => open('popular')} style={styles.h2Row}>
+          <Text style={[styles.h2, styles.h2Inline]}>Popular this week</Text>
+          <Text style={styles.seeAll}>See all</Text>
+        </Pressable>
+      )}
+      {top.length > 0 && (
+        <FlatList
+          horizontal
+          data={top}
+          keyExtractor={(t) => t.id}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.row}
+          renderItem={songCard(top)}
+        />
+      )}
       <Carousel title="Recently added" data={newest} keyExtractor={(t) => t.id} renderItem={songCard(newest)} />
       <Carousel
         title="Albums"
@@ -161,6 +178,9 @@ const styles = StyleSheet.create({
   h1: { color: colors.text, fontSize: 24, fontWeight: '800' },
   h2: { color: colors.text, fontSize: 21, fontWeight: '800', marginTop: 28, marginBottom: 12, paddingHorizontal: 16 },
   row: { gap: 14, paddingHorizontal: 16 },
+  h2Row: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingRight: 16 },
+  h2Inline: { flex: 1 },
+  seeAll: { color: colors.textMuted, fontSize: 13, fontWeight: '700' },
   banner: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, marginBottom: 12, padding: 12, borderRadius: 8, backgroundColor: colors.surfaceHigh },
   bannerText: { flex: 1, color: colors.text, fontSize: 13 },
   bannerRetry: { color: colors.accent, fontWeight: '700', fontSize: 13 },

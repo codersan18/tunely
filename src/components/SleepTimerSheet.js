@@ -14,6 +14,7 @@ export default function SleepTimerSheet({ visible, onClose }) {
   return (
     <Sheet visible={visible} onClose={onClose}>
       <Text style={styles.title}>Sleep timer</Text>
+      <Text style={styles.hint}>The music fades out gently over the last 30 seconds.</Text>
       {active && (
         <Text style={styles.status}>
           {sleepAfterTrack
@@ -33,4 +34,5 @@ export default function SleepTimerSheet({ visible, onClose }) {
 const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 17, fontWeight: '800', paddingHorizontal: 20, paddingBottom: 4 },
   status: { color: colors.accent, paddingHorizontal: 20, paddingBottom: 8 },
+  hint: { color: colors.textMuted, fontSize: 13, paddingHorizontal: 20, paddingBottom: 8 },
 });

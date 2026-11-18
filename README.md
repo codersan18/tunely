@@ -33,10 +33,10 @@ The web packages are kept out of `package.json` on purpose. With them listed the
 ## Features
 - **Your own music library** – songs you upload are stored online (Neon) and appear in every install of the app
 - **Manage songs (admin)** – Library → lock icon → admin password. Pick audio files, edit title / artist / album / genre, add a cover, upload. Songs already in the library are skipped (same file, or same title + artist). Remove songs from the Library tab.
-- **Home** – quick tiles (All songs, Liked, Downloaded, your playlists), Jump back in, Recently added, Artists, All songs. Pull down to refresh.
-- **Search** – searches the library on the phone (works offline); browse by artist and genre
+- **Home** – quick tiles (All songs, Liked, Downloaded, your playlists), Jump back in, Popular this week, Recently added, Artists, All songs. Pull down to refresh.
+- **Search** – searches the library and the songs on the phone (works offline); browse by artist and genre. "Can't find it?" asks for the song to be added.
 - **Your Library** – All songs, Liked Songs, Downloaded, On this phone, your playlists, artists
-- **On this phone** (Android) – plays songs already saved on the phone (Music, Download, WhatsApp audio…) straight from their files; nothing is copied or uploaded. The first time, tap **Allow access** ("Music and audio" permission; no access to photos or videos). Title, artist and album come from each MP3's tags, or from the file name ("Artist - Title.mp3"). The cover inside the MP3 is shown too: it's read from the file when the song is on screen and kept in memory only (`src/utils/localCover.js`), so nothing is saved; the lock screen shows no cover for these songs, because Android can't load an in-memory image there. files under 30 seconds (ringtones, voice notes) are left out. Like them, add them to playlists and queue them like any other song. The list updates when you come back to the app, or pull down to look again. Code: `src/context/LocalMusicContext.js`.
+- **On this phone** (Android) – Library → On this phone plays songs already saved on the phone straight from their files; nothing is copied or uploaded. The first time, tap **Allow access** ("Music and audio" permission only). Songs are in three sections by folder: **Songs** (Music, Download and the rest), **WhatsApp audio**, and **Others** (recordings, call recordings, Telegram, podcasts…), and can be browsed by **Artists**, **Albums** and **Folders**. Title, artist, album and cover come from the file's tags (MP3, M4A and FLAC), or from the file name ("Artist - Title.mp3"); files under 30 seconds are left out. Covers are read when shown and kept in memory; only the playing song's cover is written to the cache, for the lock screen. The admin can send a phone song to the library from its ••• menu (**Add to VibeRoom library**). Code: `src/context/LocalMusicContext.js`, `src/screens/LocalMusicScreen.js`.
 - **Playlist / Artist / Genre pages** – play, shuffle, download the whole list
 - **Now Playing** – full-screen player with drag-to-seek bar, prev/next, shuffle, repeat (off / all / one), like
 - **Mini player** above the tab bar with live progress
@@ -46,7 +46,15 @@ The web packages are kept out of `package.json` on purpose. With them listed the
 - **Offline downloads** – download a song (••• menu) or a whole playlist (↓ button); downloaded songs play from the phone with no internet. Library → Downloaded shows them and the storage used.
 - **Queue** – "Play next" / "Add to queue" from any song's menu; the Queue screen (list icon in the player) lets you jump to a song, remove songs, or clear Up Next.
 - **Smart shuffle** – tap the shuffle button twice (sparkle icon). After each song it plays the closest match from the whole library: same language and mood first, then genre and artist. It avoids repeats and songs you skipped; "Play next" songs still come first. Set each song's Language and Mood when uploading, or edit them in Manage songs → Library.
-- **Sleep timer** – moon icon in the player: 5–60 minutes or end of the current song.
+- **Sleep timer** – moon icon in the player: 5–60 minutes or end of the current song. The music fades out over the last 30 seconds.
+- **Carry on where you left off** – the queue, song and position are saved; reopening the app brings them back, paused.
+- **Playback speed** – the 1× button in the player: 0.75× to 2×.
+- **Smooth transitions** – Library → ⚙ Settings: songs fade out and in (3, 6 or 10 s).
+- **Data saver** – Settings: on mobile data the player loads only ~50 s ahead instead of the whole song and the next one (needs the patched expo-audio, see below).
+- **Popular this week** – the most played library songs by everyone in the last 7 days (Home, and "See all"). The app counts a play after 30 seconds, once per phone per song per 10 minutes, with a random install ID (nothing personal).
+- **Your VibeRoom** – Library → 📊: listening time, top songs and top artists this month, this year or all time. Kept on the phone only.
+- **Ask for a song** – from Search or Settings; requests show up for the admin in Manage songs → Requests.
+- **Share** – a song's ••• menu → Share sends `https://viberoom.expo.app/?song=<id>`. It opens the song in the app on Android (app links, `public/.well-known/assetlinks.json`) or on the website.
 - **Your own playlists** – create (+ in Library), add songs, remove songs, rename, delete.
 - **Saved on the phone** – liked songs, playlists and downloads survive app restarts (AsyncStorage + expo-file-system).
 - **No ads, unlimited skips, play any song in any order.**
@@ -120,10 +128,10 @@ The release notes end with a hidden line, `<!-- runtime: <hash> -->`: the build'
 
 ### Patched expo-audio
 
-`patches/expo-audio+58.0.12.patch` changes three things in expo-audio's Android code, and `package.json` builds expo-audio from source (`expo.autolinking.buildFromSource`) so the patch is used. `npm install` applies it (`postinstall: patch-package`).
+`patches/expo-audio+58.0.12.patch` changes these things in expo-audio's Android code, and `package.json` builds expo-audio from source (`expo.autolinking.buildFromSource`) so the patch is used. `npm install` applies it (`postinstall: patch-package`).
 - The lock screen session only received 2 of the player's events. It never learned that a song had been added, so the app crashed when the next song started (`Invalid PlayerInfo update`), and the lock screen's play button kept showing loading. Same fix as [expo/expo#52193](https://github.com/expo/expo/pull/52193).
 - `play()` did nothing after a playback error (no internet, missing file). It now prepares the player again, so the app retries the same song instead of rebuilding the player.
-- The playlist player loads up to 10 minutes (max 40 MB) ahead instead of Android's default 50 seconds. It loads the rest of the current song, then the next song, into memory, so a weak network doesn't make songs stall. Nothing is saved to the phone's storage.
+- The playlist player loads up to 10 minutes (max 40 MB) ahead instead of Android's default 50 seconds; with **data saver** (the playlist's `dataSaver` property, set by the app on mobile data) it stops at 50 seconds again. It loads the rest of the current song, then the next song, into memory, so a weak network doesn't make songs stall. Nothing is saved to the phone's storage.
 
 When upgrading expo-audio, check whether #52193 is included. If it is, drop that part of the patch. The `play()` part stays until expo-audio does the same.
 

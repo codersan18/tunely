@@ -183,15 +183,151 @@ export function tagsToDetails(frames) {
   return details;
 }
 
+// ---------- FLAC (Vorbis comments + PICTURE block) ----------
+
+const le32 = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
+const VORBIS = { TITLE: 'TIT2', ARTIST: 'TPE1', ALBUMARTIST: 'TPE2', ALBUM: 'TALB', GENRE: 'TCON', DATE: 'TDRC', YEAR: 'TYER' };
+
+function vorbisComments(b, frames) {
+  let i = 4 + le32(b, 0); // skip the vendor string
+  const count = le32(b, i);
+  i += 4;
+  for (let n = 0; n < count && i + 4 <= b.length; n += 1) {
+    const len = le32(b, i);
+    const text = utf8(b.subarray(i + 4, i + 4 + len));
+    i += 4 + len;
+    const eq = text.indexOf('=');
+    const id = VORBIS[text.slice(0, eq).toUpperCase()];
+    if (!id) continue;
+    const value = text.slice(eq + 1).trim();
+    frames[id] = frames[id] ? `${frames[id]}, ${value}` : value; // several ARTIST= lines
+  }
+}
+
+function flacPicture(b) {
+  let i = 0;
+  const type = be32(b, i); i += 4;
+  const mimeLen = be32(b, i); i += 4;
+  const mime = latin1(b.subarray(i, i + mimeLen)).toLowerCase() || 'image/jpeg'; i += mimeLen;
+  i += 4 + be32(b, i); // description
+  i += 16; // width, height, depth, colours
+  const len = be32(b, i); i += 4;
+  return { type, mime, data: b.subarray(i, i + len) };
+}
+
+// ---------- M4A / MP4 (iTunes "ilst" atoms) ----------
+
+const MP4 = { '\xa9nam': 'TIT2', '\xa9ART': 'TPE1', aART: 'TPE2', '\xa9alb': 'TALB', '\xa9gen': 'TCON', '\xa9day': 'TDRC' };
+
+// The boxes inside `b` (each: 4-byte size, 4-letter type, contents).
+function* boxes(b) {
+  for (let i = 0; i + 8 <= b.length;) {
+    const len = be32(b, i);
+    if (len < 8 || i + len > b.length) return;
+    yield [latin1(b.subarray(i + 4, i + 8)), b.subarray(i + 8, i + len)];
+    i += len;
+  }
+}
+const child = (b, type) => { for (const [t, c] of boxes(b)) if (t === type) return c; return null; };
+
+export function parseMoov(moov) {
+  const meta = child(child(moov, 'udta') || new Uint8Array(0), 'meta');
+  const ilst = meta && child(meta.subarray(4), 'ilst'); // "meta" has 4 bytes of version/flags first
+  if (!ilst) return null;
+  const frames = {};
+  for (const [type, item] of boxes(ilst)) {
+    const data = child(item, 'data');
+    if (!data || data.length < 8) continue;
+    const kind = be32(data, 0) & 0xffffff;
+    const payload = data.subarray(8); // after type and locale
+    if (type === 'covr' && !frames.APIC) {
+      frames.APIC = { type: 3, mime: kind === 14 ? 'image/png' : 'image/jpeg', data: payload };
+    } else if (MP4[type] && kind === 1) {
+      frames[MP4[type]] = utf8(payload);
+    }
+  }
+  return frames;
+}
+
+// ---------- reading the file ----------
+
+const MAX_MOOV_BYTES = 16 * 1024 * 1024;
+
+// Raw frames ({ TIT2, TPE1, TALB, TCON, TDRC, APIC }) from an MP3, FLAC or M4A file, reading only
+// the tag part, never the whole song. null if the file has no tags we understand.
+async function readFrames(uri) {
+  const h = new File(uri).open(FileMode.ReadOnly);
+  try {
+    const head = await h.readBytes(12);
+    if (head.length < 12) return null;
+    const tag = latin1(head.subarray(0, 4));
+
+    if (tag.startsWith('ID3')) {
+      const size = syncsafe(head, 6);
+      if (size <= 0 || size > MAX_TAG_BYTES) return null;
+      h.offset = 10;
+      const rest = await h.readBytes(size);
+      const bytes = new Uint8Array(10 + rest.length);
+      bytes.set(head.subarray(0, 10), 0);
+      bytes.set(rest, 10);
+      return parseID3(bytes);
+    }
+
+    if (tag === 'fLaC') {
+      const frames = {};
+      let pos = 4;
+      for (let n = 0; n < 128; n += 1) {
+        h.offset = pos;
+        const bh = await h.readBytes(4);
+        if (bh.length < 4) break;
+        const type = bh[0] & 0x7f;
+        const len = (bh[1] << 16) | (bh[2] << 8) | bh[3];
+        if ((type === 4 || type === 6) && len <= MAX_TAG_BYTES) {
+          const block = await h.readBytes(len);
+          if (type === 4) vorbisComments(block, frames);
+          else {
+            const pic = flacPicture(block);
+            if (!frames.APIC || (pic.type === 3 && frames.APIC.type !== 3)) frames.APIC = pic; // front cover first
+          }
+        }
+        pos += 4 + len;
+        if (bh[0] & 0x80) break; // last metadata block
+      }
+      return Object.keys(frames).length ? frames : null;
+    }
+
+    if (latin1(head.subarray(4, 8)) === 'ftyp') {
+      // Find "moov" among the top-level boxes (it can come after the audio, so skip over boxes).
+      const size = h.size || 0;
+      for (let pos = 0; pos + 8 <= size;) {
+        h.offset = pos;
+        const bh = await h.readBytes(16);
+        if (bh.length < 8) break;
+        let len = be32(bh, 0);
+        let hdr = 8;
+        if (len === 1) { len = be32(bh, 8) * 2 ** 32 + be32(bh, 12); hdr = 16; } else if (len === 0) len = size - pos;
+        if (len < hdr) break;
+        if (latin1(bh.subarray(4, 8)) === 'moov') {
+          if (len > MAX_MOOV_BYTES) return null;
+          h.offset = pos + hdr;
+          return parseMoov(await h.readBytes(len - hdr));
+        }
+        pos += len;
+      }
+    }
+    return null;
+  } finally {
+    h.close();
+  }
+}
+
 /**
- * Read the tags of an audio file on the phone. Returns null if it has none (or isn't an MP3).
+ * Read the tags of an audio file on the phone (MP3, FLAC or M4A). Returns null if it has none.
  * The cover, if any, is saved to the cache so the upload form can use it like a picked image
  * (unless `cover: false`: songs on the phone are listed without saving anything).
  */
 export async function readTags(uri, { cover: withCover = true } = {}) {
-  const bytes = await readTagBytes(uri);
-  if (!bytes) return null;
-  const details = tagsToDetails(parseID3(bytes));
+  const details = tagsToDetails(await readFrames(uri));
   if (!details) return null;
   if (withCover && details.picture) {
     const ext = details.picture.mime.includes('png') ? 'png' : 'jpg';
@@ -202,24 +338,6 @@ export async function readTags(uri, { cover: withCover = true } = {}) {
   }
   delete details.picture;
   return details;
-}
-
-// Only the ID3 tag at the start of the file (with the cover), never the song itself.
-async function readTagBytes(uri) {
-  const handle = new File(uri).open(FileMode.ReadOnly);
-  try {
-    const head = await handle.readBytes(10);
-    if (head.length < 10 || head[0] !== 0x49 || head[1] !== 0x44 || head[2] !== 0x33) return null;
-    const size = syncsafe(head, 6);
-    if (size <= 0 || size > MAX_TAG_BYTES) return null;
-    const rest = await handle.readBytes(size);
-    const bytes = new Uint8Array(10 + rest.length);
-    bytes.set(head, 0);
-    bytes.set(rest, 10);
-    return bytes;
-  } finally {
-    handle.close();
-  }
 }
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -235,13 +353,15 @@ function base64(b) {
 
 const MAX_COVER_BYTES = 1.5 * 1024 * 1024;
 
-/**
- * The cover picture inside an MP3, as a data: URI kept in memory (nothing is written to the phone).
- * null if the file has no cover (or isn't an MP3).
- */
-export async function readCoverDataUri(uri) {
-  const bytes = await readTagBytes(uri);
-  const pic = bytes && parseID3(bytes)?.APIC;
+// The cover picture inside an MP3, FLAC or M4A: { mime, data } or null.
+export async function readCover(uri) {
+  const pic = (await readFrames(uri))?.APIC;
   if (!pic?.data || pic.data.length < 100 || pic.data.length > MAX_COVER_BYTES) return null;
-  return `data:${pic.mime};base64,${base64(pic.data)}`;
+  return { mime: pic.mime, data: pic.data };
+}
+
+/** The cover as a data: URI kept in memory (nothing is written to the phone). null if none. */
+export async function readCoverDataUri(uri) {
+  const pic = await readCover(uri);
+  return pic && `data:${pic.mime};base64,${base64(pic.data)}`;
 }

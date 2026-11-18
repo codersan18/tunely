@@ -1,16 +1,43 @@
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
+index 6c81fce..8c6434f 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
+@@ -1013,6 +1013,13 @@ class AudioModule : Module() {
+         }
+       }
+ 
++      // VibeRoom patch: data saver (load only ~50 s ahead), switched on by the app on mobile data.
++      Property("dataSaver") { playlist ->
++        playlist.dataSaver
++      }.set { playlist, on: Boolean ->
++        playlist.dataSaver = on
++      }
++
+       Property("loop") { playlist ->
+         playlist.loopMode.value
+       }.set { playlist, mode: LoopMode ->
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlaylist.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlaylist.kt
-index bf3f9c5..ff5e0b9 100644
+index bf3f9c5..8d98485 100644
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlaylist.kt
 +++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlaylist.kt
-@@ -6,6 +6,7 @@ import androidx.media3.common.MediaItem
+@@ -6,8 +6,16 @@ import androidx.media3.common.MediaItem
  import androidx.media3.common.PlaybackException
  import androidx.media3.common.Player
  import androidx.media3.common.util.UnstableApi
++import androidx.media3.common.Timeline
 +import androidx.media3.exoplayer.DefaultLoadControl
  import androidx.media3.exoplayer.ExoPlayer
++import androidx.media3.exoplayer.LoadControl
++import androidx.media3.exoplayer.analytics.PlayerId
  import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
++import androidx.media3.exoplayer.source.MediaSource
++import androidx.media3.exoplayer.source.TrackGroupArray
++import androidx.media3.exoplayer.trackselection.ExoTrackSelection
++import androidx.media3.exoplayer.upstream.Allocator
  import androidx.media3.datasource.DataSource
-@@ -17,6 +18,23 @@ import java.lang.ref.WeakReference
+ import androidx.media3.session.MediaSession
+ import expo.modules.audio.service.AudioPlaybackServiceConnection
+@@ -17,19 +25,71 @@ import java.lang.ref.WeakReference
  private const val PLAYLIST_STATUS_UPDATE = "playlistStatusUpdate"
  private const val TRACK_CHANGED = "trackChanged"
  
@@ -31,17 +58,69 @@ index bf3f9c5..ff5e0b9 100644
 +  .setPrioritizeTimeOverSizeThresholds(false)
 +  .build()
 +
++// Data saver (set from JS while on mobile data): stop loading once this much is buffered,
++// like Android's default, instead of loading the whole song and the next one.
++private const val DATA_SAVER_BUFFER_US = 50_000_000L
++
++@UnstableApi
++class DataSaverLoadControl(private val inner: DefaultLoadControl) : LoadControl {
++  @Volatile var dataSaver = false
++
++  override fun shouldContinueLoading(parameters: LoadControl.Parameters): Boolean =
++    if (dataSaver && parameters.bufferedDurationUs >= DATA_SAVER_BUFFER_US) false
++    else inner.shouldContinueLoading(parameters)
++
++  // Everything else is DefaultLoadControl's own behaviour.
++  override fun onPrepared(playerId: PlayerId) = inner.onPrepared(playerId)
++  override fun onTracksSelected(
++    parameters: LoadControl.Parameters,
++    trackGroups: TrackGroupArray,
++    trackSelections: Array<out ExoTrackSelection?>
++  ) = inner.onTracksSelected(parameters, trackGroups, trackSelections)
++  override fun onStopped(playerId: PlayerId) = inner.onStopped(playerId)
++  override fun onReleased(playerId: PlayerId) = inner.onReleased(playerId)
++  override fun getAllocator(playerId: PlayerId): Allocator = inner.getAllocator(playerId)
++  override fun getBackBufferDurationUs(playerId: PlayerId): Long = inner.getBackBufferDurationUs(playerId)
++  override fun retainBackBufferFromKeyframe(playerId: PlayerId): Boolean = inner.retainBackBufferFromKeyframe(playerId)
++  override fun shouldStartPlayback(parameters: LoadControl.Parameters): Boolean = inner.shouldStartPlayback(parameters)
++  override fun shouldContinuePreloading(
++    playerId: PlayerId,
++    timeline: Timeline,
++    mediaPeriodId: MediaSource.MediaPeriodId,
++    bufferedDurationUs: Long
++  ): Boolean = inner.shouldContinuePreloading(playerId, timeline, mediaPeriodId, bufferedDurationUs)
++}
++
  @UnstableApi
  class AudioPlaylist(
    context: Context,
-@@ -30,6 +48,7 @@ class AudioPlaylist(
+   appContext: AppContext,
+   initialSources: List<AudioSource>,
+   updateInterval: Double,
+-  dataSourceFactory: DataSource.Factory
++  dataSourceFactory: DataSource.Factory,
++  private val loadControl: DataSaverLoadControl = DataSaverLoadControl(bufferAheadLoadControl())
+ ) : BaseAudioPlayer(
+   player = ExoPlayer.Builder(context)
+     .setLooper(context.mainLooper)
      .setAudioAttributes(AudioAttributes.DEFAULT, false)
      .setHandleAudioBecomingNoisy(true)
      .setMediaSourceFactory(DefaultMediaSourceFactory(context).setDataSourceFactory(dataSourceFactory))
-+    .setLoadControl(bufferAheadLoadControl())
++    .setLoadControl(loadControl)
      .build(),
    appContext = appContext,
    updateInterval = updateInterval,
+@@ -37,6 +97,10 @@ class AudioPlaylist(
+ ),
+   LockScreenPlayable {
+   private var sources: MutableList<AudioSource> = initialSources.toMutableList()
++
++  var dataSaver: Boolean
++    get() = loadControl.dataSaver
++    set(value) { loadControl.dataSaver = value }
+   private var currentRate = 1f
+   private var previousMediaItemIndex = 0
+ 
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/Playable.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/Playable.kt
 index 929df65..95b695d 100644
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/Playable.kt

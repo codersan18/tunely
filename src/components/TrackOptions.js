@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { File } from 'expo-file-system';
 import { colors } from '../theme';
+import { keyStore } from '../utils/files';
+import { shareSong } from '../utils/share';
 import Cover from './Cover';
 import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
@@ -18,8 +22,26 @@ export default function TrackOptions({ track, visible, onClose, playlistId }) {
   } = useLibrary();
   const [mode, setMode] = useState('menu'); // menu | pick
   const [naming, setNaming] = useState(false);
+  const navigation = useNavigation();
+
+  // The admin can add a song from the phone to the library (only once Manage songs is unlocked).
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    if (!visible || !track?.local) return;
+    keyStore.get('tunely.adminKey').then((k) => setIsAdmin(!!k)).catch(() => {});
+  }, [visible, track?.local]);
 
   if (!track) return null;
+
+  const onAddToLibrary = () => {
+    close();
+    const name = decodeURIComponent(track.url.split('/').pop() || `${track.title}.mp3`);
+    const ext = (name.match(/\.([a-z0-9]+)$/i)?.[1] || 'mp3').toLowerCase();
+    const mimeType = { mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', flac: 'audio/flac', ogg: 'audio/ogg', opus: 'audio/ogg' }[ext] || 'audio/mpeg';
+    let size = 0;
+    try { size = new File(track.url).size || 0; } catch (e) { /* unknown */ }
+    navigation.navigate('Admin', { files: [{ uri: track.url, name, mimeType, size }] });
+  };
   const close = () => { setMode('menu'); onClose(); };
   const liked = isLiked(track.id);
   const downloaded = isDownloaded(track.id);
@@ -60,6 +82,12 @@ export default function TrackOptions({ track, visible, onClose, playlistId }) {
             )}
             <SheetItem icon="play-forward-outline" label="Play next" onPress={() => { playNext(track); toast('Playing next'); close(); }} />
             <SheetItem icon="list-outline" label="Add to queue" onPress={() => { addToQueue(track); toast('Added to queue'); close(); }} />
+            {!!track.songId && (
+              <SheetItem icon="share-social-outline" label="Share" onPress={() => { close(); shareSong(track); }} />
+            )}
+            {track.local && isAdmin && (
+              <SheetItem icon="cloud-upload-outline" label="Add to VibeRoom library" onPress={onAddToLibrary} />
+            )}
             {!track.local && ( // songs on the phone already play without internet
               <SheetItem
                 icon={downloaded ? 'checkmark-circle' : 'arrow-down-circle-outline'}

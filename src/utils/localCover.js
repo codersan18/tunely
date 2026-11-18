@@ -3,7 +3,8 @@
 // only (nothing is written to the phone). The last few are remembered so scrolling back is instant.
 
 import { useEffect, useState } from 'react';
-import { readCoverDataUri } from './readTags';
+import { Directory, File, Paths } from 'expo-file-system';
+import { readCover, readCoverDataUri } from './readTags';
 
 export const LOCAL_COVER = 'localcover:';
 export const localCover = (fileUri) => `${LOCAL_COVER}${fileUri}`;
@@ -31,6 +32,39 @@ function loadCover(fileUri) {
       .then((value) => { remember(fileUri, value); loading.delete(fileUri); return value; }));
   }
   return loading.get(fileUri);
+}
+
+// The lock screen can only show a cover from a web link or a file. For the song that's playing,
+// write its cover to one small file in the cache (the previous one is deleted), and return its uri.
+let lockFile = null;
+let lockKey = 0;
+let cleaned = false;
+export async function lockScreenCover(artwork) {
+  if (!isLocalCover(artwork)) return null;
+  const key = ++lockKey;
+  if (!cleaned) { // covers left behind if the app was closed mid-song
+    cleaned = true;
+    try {
+      new Directory(Paths.cache).list()
+        .filter((f) => f instanceof File && f.name?.startsWith('lockscreen-cover-'))
+        .forEach((f) => f.delete());
+    } catch (e) { /* nothing to clean */ }
+  }
+  try {
+    const pic = await readCover(artwork.slice(LOCAL_COVER.length));
+    if (key !== lockKey) return null; // another song started meanwhile
+    try { if (lockFile?.exists) lockFile.delete(); } catch (e) { /* already gone */ }
+    lockFile = null;
+    if (!pic) return null;
+    // A new name each time: the lock screen skips loading a link it has already shown.
+    const file = new File(Paths.cache, `lockscreen-cover-${Date.now()}.${pic.mime.includes('png') ? 'png' : 'jpg'}`);
+    file.create({ overwrite: true });
+    file.write(pic.data);
+    lockFile = file;
+    return file.uri;
+  } catch (e) {
+    return null;
+  }
 }
 
 // The image to show for an artwork value: local covers are loaded; anything else is returned as is.

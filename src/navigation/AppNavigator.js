@@ -12,7 +12,12 @@ import PlaylistScreen from '../screens/PlaylistScreen';
 import PlayerScreen from '../screens/PlayerScreen';
 import QueueScreen from '../screens/QueueScreen';
 import AdminScreen from '../screens/AdminScreen';
+import LocalMusicScreen from '../screens/LocalMusicScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import StatsScreen from '../screens/StatsScreen';
+import RequestScreen from '../screens/RequestScreen';
 import MiniPlayer from '../components/MiniPlayer';
+import SongLinkHandler from '../components/SongLinkHandler';
 
 const Root = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -29,6 +34,9 @@ const makeStack = (name, Component) => function TabStack() {
     <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
       <Stack.Screen name={name} component={Component} />
       <Stack.Screen name="Playlist" component={PlaylistScreen} />
+      <Stack.Screen name="LocalMusic" component={LocalMusicScreen} />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="Stats" component={StatsScreen} />
     </Stack.Navigator>
   );
 };
@@ -39,8 +47,10 @@ const LibraryStack = makeStack('LibraryMain', LibraryScreen);
 
 const icons = { Home: 'home', Search: 'search', Library: 'library' };
 
-function Tabs() {
+function Tabs({ navigation }) {
   return (
+    <>
+    <SongLinkHandler navigation={navigation} />
     <Tab.Navigator
       tabBar={(props) => (
         <View style={{ backgroundColor: 'transparent' }}>
@@ -62,6 +72,7 @@ function Tabs() {
       <Tab.Screen name="Search" component={SearchStack} />
       <Tab.Screen name="Library" component={LibraryStack} options={{ title: 'Your Library' }} />
     </Tab.Navigator>
+    </>
   );
 }
 
@@ -83,6 +94,11 @@ export default function AppNavigator() {
         <Root.Screen
           name="Queue"
           component={QueueScreen}
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+        <Root.Screen
+          name="Request"
+          component={RequestScreen}
           options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
         />
       </Root.Navigator>

@@ -65,7 +65,7 @@ export default function LibraryScreen({ navigation }) {
           art={<GradientArt icon="phone-portrait" from="#5C3A1F" to="#F2B880" />}
           title="On this phone"
           sub={local.status === 'ready' ? `${local.tracks.length} songs saved on your phone` : 'Play songs saved on your phone'}
-          onPress={() => open('device')}
+          onPress={() => navigation.navigate('LocalMusic')}
         />
       )}
     </View>
@@ -153,6 +153,12 @@ export default function LibraryScreen({ navigation }) {
       <View style={styles.top}>
         <Text style={styles.h1}>Your Library</Text>
         <View style={styles.topIcons}>
+          <Pressable onPress={() => navigation.navigate('Stats')} hitSlop={10} accessibilityLabel="Your VibeRoom">
+            <Ionicons name="stats-chart-outline" size={21} color={colors.textMuted} />
+          </Pressable>
+          <Pressable onPress={() => navigation.navigate('Settings')} hitSlop={10} accessibilityLabel="Settings">
+            <Ionicons name="settings-outline" size={22} color={colors.textMuted} />
+          </Pressable>
           <Pressable onPress={() => navigation.navigate('Admin')} hitSlop={10} accessibilityLabel="Manage songs">
             <Ionicons name="lock-closed-outline" size={22} color={colors.textMuted} />
           </Pressable>

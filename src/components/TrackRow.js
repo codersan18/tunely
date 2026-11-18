@@ -35,6 +35,7 @@ export default function TrackRow({ track, list, index, playlistId }) {
           <Text numberOfLines={1} style={[styles.title, active && { color: colors.accent }]}>{track.title}</Text>
           <View style={styles.sub}>
             {isDownloaded(track.id) && <Ionicons name="arrow-down-circle" size={13} color={colors.accent} />}
+            {track.local && <Ionicons name="phone-portrait-outline" size={12} color={colors.textMuted} />}
             <Text numberOfLines={1} style={styles.artist}>{track.artist}</Text>
           </View>
         </View>

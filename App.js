@@ -5,6 +5,7 @@ import { LibraryProvider } from './src/context/LibraryContext';
 import { PlayerProvider } from './src/context/PlayerContext';
 import { CatalogProvider } from './src/context/CatalogContext';
 import { LocalMusicProvider } from './src/context/LocalMusicContext';
+import { SettingsProvider } from './src/context/SettingsContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import OpeningScreen from './src/components/OpeningScreen';
 import WebFrame from './src/components/WebFrame';
@@ -25,10 +26,12 @@ export default function App() {
       <LibraryProvider>
         <CatalogProvider>
           <LocalMusicProvider>
-            <PlayerProvider>
-              <AppNavigator />
-              <StatusBar style="light" />
-            </PlayerProvider>
+            <SettingsProvider>
+              <PlayerProvider>
+                <AppNavigator />
+                <StatusBar style="light" />
+              </PlayerProvider>
+            </SettingsProvider>
           </LocalMusicProvider>
         </CatalogProvider>
       </LibraryProvider>
