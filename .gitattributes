@@ -1,0 +1,7 @@
+# Same line endings (LF) on every computer, so the app's runtime fingerprint is the same
+# whether a build starts on Windows, on EAS or in GitHub Actions.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.apk binary
+*.jar binary

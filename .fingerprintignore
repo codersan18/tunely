@@ -1,0 +1,4 @@
+# Build caches from compiling the local native modules: not part of the app.
+modules/*/android/.gradle/**/*
+modules/*/android/build/**/*
+modules/*/android/.cxx/**/*
