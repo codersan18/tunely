@@ -122,6 +122,24 @@ Only upload music you own or have permission to share: everyone who installs the
 | App code (screens, design, features) | Push to `main`. GitHub Actions runs `eas update`, and every installed app picks it up the next time it is opened. The website at viberoom.expo.app is rebuilt at the same time. |
 | Icon, name, splash, or a package with native code | Build a new APK (`npx eas-cli@latest build --profile preview --platform android`), then release it: `node scripts/release-apk.mjs "what's new"`. Installed apps then show **New version available** with a Download button. |
 
+### Building the APK on GitHub
+
+`.github/workflows/build-apk.yml` builds the APK on GitHub's Linux machines instead of EAS Build. It's free, and the result is always a clean build. Run it from **Actions → Build APK → Run workflow** and type what's new. It builds the APK, checks it's signed with the app's key and has the runtime that updates are published for, and publishes the GitHub release, as `scripts/release-apk.mjs` does for EAS builds. A build takes about 20–30 minutes.
+
+It needs the signing key EAS has been using; without it, phones refuse to install the new APK over the old one. One-time setup, in a terminal in this folder:
+
+1. `npx eas-cli@latest credentials -p android` → choose **preview** → **Keystore** → **Download existing keystore**. Note the keystore password, key alias and key password it prints. The `.jks` file it saves is ignored by git.
+2. Save it as repository secrets (replace `<file>.jks` with the saved file's name):
+   ```
+   certutil -encodenoheader <file>.jks keystore.b64
+   gh secret set ANDROID_KEYSTORE_BASE64 -R codersan18/tunely < keystore.b64
+   gh secret set ANDROID_KEYSTORE_PASSWORD -R codersan18/tunely
+   gh secret set ANDROID_KEY_ALIAS -R codersan18/tunely
+   gh secret set ANDROID_KEY_PASSWORD -R codersan18/tunely
+   del keystore.b64
+   ```
+   Each of the last three asks for its value. Keep the `.jks` file somewhere safe outside the project, and delete it from this folder.
+
 ### Releasing a new APK
 
 `scripts/release-apk.mjs` takes the newest finished Android build from EAS and publishes it as a GitHub release, with the file named `VibeRoom.apk`. The download link at the top always gives the latest release, so it never changes. It needs `npx eas-cli@latest login` and `gh auth login`.

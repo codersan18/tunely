@@ -1,0 +1,172 @@
+# Builds the Android APK on GitHub (instead of EAS Build) and publishes it as a GitHub release.
+# Run it by hand: Actions → Build APK → Run workflow.
+#
+# Needs these repository secrets: the same signing key EAS used, so the new APK installs over the
+# old one (see README → "Building the APK on GitHub"):
+#   ANDROID_KEYSTORE_BASE64   the keystore file (.jks), base64-encoded
+#   ANDROID_KEYSTORE_PASSWORD
+#   ANDROID_KEY_ALIAS
+#   ANDROID_KEY_PASSWORD
+name: Build APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: "What's new (shown on the release page)"
+        required: true
+        default: 'Fixes and improvements'
+      release:
+        description: 'Publish it as a GitHub release (the download link)'
+        type: boolean
+        default: true
+
+concurrency:
+  group: build-apk
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  # SHA-256 of the signing certificate the app has always used (also in public/.well-known/assetlinks.json).
+  EXPECTED_CERT: adafe55a8a5db982d5f37908212706c89852e48d42f71f53e165c728efe3b3ef
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Check the signing key is set up
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KSP: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KA: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KP: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for v in KS KSP KA KP; do
+            if [ -z "${!v}" ]; then echo "::error::The signing key secrets are missing. See README → Building the APK on GitHub."; exit 1; fi
+          done
+
+      - run: npm ci
+
+      # The runtime version this APK must have: the same fingerprint the "Publish app update"
+      # workflow publishes updates for. Computed before the android/ folder exists.
+      - name: Runtime fingerprint
+        id: fp
+        run: |
+          HASH=$(npx expo-updates fingerprint:generate --platform android | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).hash))")
+          echo "Runtime: $HASH"
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Generate the Android project
+        run: npx expo prebuild --platform android --no-install
+
+      # What EAS Build does for the "preview" profile: the app asks for updates on the preview channel.
+      - name: Use the preview update channel
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = 'android/app/src/main/AndroidManifest.xml';
+            let s = fs.readFileSync(p, 'utf8');
+            const key = 'expo.modules.updates.UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY';
+            if (!s.includes(key)) s = s.replace(/<application([^>]*)>/, (m) => m + '\n    <meta-data android:name=\"' + key + '\" android:value=\"{&quot;expo-channel-name&quot;:&quot;preview&quot;}\"/>');
+            fs.writeFileSync(p, s);
+          "
+          grep -n "REQUEST_HEADERS" android/app/src/main/AndroidManifest.xml
+
+      - name: Sign with the app's key
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          # certutil (Windows) writes the base64 in lines; drop the line breaks before decoding.
+          echo "$KS" | tr -d '\r\n ' | base64 -d > android/app/viberoom.jks
+          cat >> android/app/build.gradle <<'EOF'
+
+          android {
+              signingConfigs {
+                  viberoom {
+                      storeFile file('viberoom.jks')
+                      storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                      keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                      keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.viberoom
+                  }
+              }
+          }
+          EOF
+          sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g/' android/gradle.properties
+
+      - name: Build the APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # Give the APK exactly the runtime the update workflow publishes for (EAS Build does the same).
+          EXPO_UPDATES_FINGERPRINT_OVERRIDE: ${{ steps.fp.outputs.hash }}
+        run: cd android && ./gradlew :app:assembleRelease --no-daemon
+
+      # Refuse to publish an APK that wouldn't install over the current app, or wouldn't get updates.
+      - name: Check signature and runtime
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          CERT=$("$BT/apksigner" verify --print-certs "$APK" | grep -m1 "SHA-256 digest" | awk '{print $NF}')
+          echo "Certificate: $CERT"
+          if [ "$CERT" != "$EXPECTED_CERT" ]; then echo "::error::Signed with a different key than the app uses ($CERT). Phones couldn't install it over VibeRoom."; exit 1; fi
+          RT=$(unzip -p "$APK" assets/fingerprint)
+          echo "Runtime in the APK: $RT"
+          if [ "$RT" != "${{ steps.fp.outputs.hash }}" ]; then echo "::error::The APK's runtime ($RT) isn't the one updates are published for (${{ steps.fp.outputs.hash }})."; exit 1; fi
+          cp "$APK" VibeRoom.apk
+          ls -la VibeRoom.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VibeRoom-apk
+          path: VibeRoom.apk
+          retention-days: 14
+
+      # Same release format as scripts/release-apk.mjs: the hidden runtime line is what installed apps
+      # compare against to show "New version available" (src/utils/newVersion.js).
+      - name: Publish the release
+        if: ${{ inputs.release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+          RUNTIME: ${{ steps.fp.outputs.hash }}
+        run: |
+          if gh release list --limit 50 --json tagName -q '.[].tagName' | while read t; do gh release view "$t" --json body -q .body; done | grep -q "runtime: $RUNTIME"; then
+            echo "An APK with runtime $RUNTIME is already released; nothing to publish."
+            exit 0
+          fi
+          DAY=$(date -u +%Y-%m-%d)
+          TAG="android-$DAY"; N=2
+          while gh release view "$TAG" >/dev/null 2>&1; do TAG="android-$DAY-$N"; N=$((N+1)); done
+          {
+            echo 'Install on an Android phone: open this page on the phone, tap **VibeRoom.apk**, then open the download and allow "Install unknown apps" if asked. Your liked songs, playlists and downloads stay.'
+            echo
+            echo "What's new:"
+            echo "$NOTES"
+            echo
+            echo "<!-- runtime: $RUNTIME -->"
+          } > notes.md
+          gh release create "$TAG" VibeRoom.apk --title "VibeRoom for Android" --notes-file notes.md --target "$GITHUB_SHA" --latest
+          echo "Released $TAG: https://github.com/${{ github.repository }}/releases/tag/$TAG"
