@@ -49,3 +49,6 @@ yarn-error.*
 # Gradle files from building the local native modules
 modules/*/android/.gradle/
 modules/*/android/build/
+
+# Personal editor settings
+.vscode/
