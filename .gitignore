@@ -45,3 +45,7 @@ yarn-error.*
 
 # Personal Claude Code settings
 .claude/settings.local.json
+
+# Gradle files from building the local native modules
+modules/*/android/.gradle/
+modules/*/android/build/
