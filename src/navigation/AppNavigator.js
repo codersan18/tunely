@@ -18,6 +18,7 @@ import StatsScreen from '../screens/StatsScreen';
 import RequestScreen from '../screens/RequestScreen';
 import EditorScreen from '../screens/EditorScreen';
 import EditsScreen from '../screens/EditsScreen';
+import PickSongScreen from '../screens/PickSongScreen';
 import MiniPlayer from '../components/MiniPlayer';
 import SongLinkHandler from '../components/SongLinkHandler';
 
@@ -103,6 +104,11 @@ export default function AppNavigator() {
           name="Editor"
           component={EditorScreen}
           options={{ presentation: 'modal', animation: 'slide_from_bottom', gestureEnabled: false }}
+        />
+        <Root.Screen
+          name="PickSong"
+          component={PickSongScreen}
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
         />
         <Root.Screen
           name="Request"

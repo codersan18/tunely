@@ -3,7 +3,6 @@ import { View, Text, Pressable, StyleSheet, FlatList, ActivityIndicator, Alert }
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import * as DocumentPicker from 'expo-document-picker';
 import { colors } from '../theme';
 import AudioEditor from '../../modules/audio-editor';
 import Sheet, { SheetItem } from '../components/Sheet';
@@ -32,14 +31,7 @@ export default function EditsScreen({ navigation }) {
   }, []);
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const pickFile = async () => {
-    try {
-      const res = await DocumentPicker.getDocumentAsync({ type: 'audio/*', copyToCacheDirectory: false });
-      if (res.canceled || !res.assets?.[0]) return;
-      const a = res.assets[0];
-      navigation.navigate('Editor', { source: { uri: a.uri, title: (a.name || 'Sound').replace(/\.[^.]+$/, '') } });
-    } catch (e) { toast("Couldn't open that file"); }
-  };
+  const pickSong = () => navigation.navigate('PickSong');
 
   const remove = (e) => {
     Alert.alert('Delete this sound?', `"${e.name}" will be deleted from the phone.`, [
@@ -71,11 +63,11 @@ export default function EditsScreen({ navigation }) {
         refreshing={false}
         ListHeaderComponent={(
           <View>
-            <Pressable onPress={pickFile} style={({ pressed }) => [styles.newRow, pressed && { opacity: 0.6 }]}>
+            <Pressable onPress={pickSong} style={({ pressed }) => [styles.newRow, pressed && { opacity: 0.6 }]}>
               <View style={[styles.icon, { backgroundColor: colors.accent }]}><Ionicons name="cut" size={24} color={colors.bg} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.title}>New edit</Text>
-                <Text style={styles.sub}>Pick any audio file on the phone</Text>
+                <Text style={styles.sub}>Choose a song from your phone or VibeRoom</Text>
               </View>
             </Pressable>
             <Text style={styles.tip}>Or open any song's ••• menu → Cut / make ringtone.</Text>
