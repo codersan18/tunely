@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:tools="http://schemas.android.com/tools">
+  <!-- Needed only to set the phone's default ringtone, alarm or notification sound.
+       Android asks the person to turn it on in Settings ("Modify system settings"). -->
+  <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
+</manifest>

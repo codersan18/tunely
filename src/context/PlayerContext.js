@@ -443,6 +443,7 @@ export function PlayerProvider({ children }) {
     playlist.play();
   }, [currentTrack, playlist, status.playing, status.currentTime, status.duration]);
 
+  const pause = useCallback(() => { try { playlist.pause(); } catch (e) { /* nothing playing */ } }, [playlist]);
   const seekTo = useCallback((seconds) => { playlist.seekTo(seconds).catch(() => {}); }, [playlist]);
 
   const next = useCallback(() => {
@@ -553,6 +554,7 @@ export function PlayerProvider({ children }) {
     sleepAfterTrack,
     playTrack,
     togglePlay,
+    pause,
     next,
     previous,
     seekTo,
@@ -565,7 +567,7 @@ export function PlayerProvider({ children }) {
     clearUpNext,
     setSleepTimer,
   }), [currentTrack, queue, upNext, status.playing, status.isBuffering, status.currentTime, status.duration,
-    shuffle, smart, shuffleMode, repeat, sleepAt, sleepAfterTrack, playTrack, togglePlay, next, previous, seekTo,
+    shuffle, smart, shuffleMode, repeat, sleepAt, sleepAfterTrack, playTrack, togglePlay, pause, next, previous, seekTo,
     playNext, addToQueue, removeFromQueue, jumpTo, clearUpNext, setSleepTimer]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;

@@ -16,6 +16,8 @@ import LocalMusicScreen from '../screens/LocalMusicScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import StatsScreen from '../screens/StatsScreen';
 import RequestScreen from '../screens/RequestScreen';
+import EditorScreen from '../screens/EditorScreen';
+import EditsScreen from '../screens/EditsScreen';
 import MiniPlayer from '../components/MiniPlayer';
 import SongLinkHandler from '../components/SongLinkHandler';
 
@@ -37,6 +39,7 @@ const makeStack = (name, Component) => function TabStack() {
       <Stack.Screen name="LocalMusic" component={LocalMusicScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="Stats" component={StatsScreen} />
+      <Stack.Screen name="Edits" component={EditsScreen} />
     </Stack.Navigator>
   );
 };
@@ -95,6 +98,11 @@ export default function AppNavigator() {
           name="Queue"
           component={QueueScreen}
           options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+        <Root.Screen
+          name="Editor"
+          component={EditorScreen}
+          options={{ presentation: 'modal', animation: 'slide_from_bottom', gestureEnabled: false }}
         />
         <Root.Screen
           name="Request"

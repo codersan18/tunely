@@ -8,6 +8,8 @@ import { shareSong } from '../utils/share';
 import Cover from './Cover';
 import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
+import { useCatalog } from '../context/CatalogContext';
+import { EDITOR_SUPPORTED } from '../../modules/audio-editor';
 import Sheet, { SheetItem } from './Sheet';
 import NamePrompt from './NamePrompt';
 
@@ -18,8 +20,9 @@ export default function TrackOptions({ track, visible, onClose, playlistId }) {
   const { playNext, addToQueue } = usePlayer();
   const {
     isLiked, toggleLike, playlists, addToPlaylist, createPlaylist, removeFromPlaylist,
-    isDownloaded, isDownloading, download, removeDownload,
+    isDownloaded, isDownloading, download, removeDownload, playableSource,
   } = useLibrary();
+  const { songs } = useCatalog();
   const [mode, setMode] = useState('menu'); // menu | pick
   const [naming, setNaming] = useState(false);
   const navigation = useNavigation();
@@ -43,6 +46,16 @@ export default function TrackOptions({ track, visible, onClose, playlistId }) {
     navigation.navigate('Admin', { files: [{ uri: track.url, name, mimeType, size }] });
   };
   const close = () => { setMode('menu'); onClose(); };
+
+  // Open the audio editor on this song: the downloaded copy if there is one, else the server's
+  // current file (the editor reads it into memory; nothing but the finished edit is saved).
+  const onEdit = () => {
+    close();
+    const current = songs.find((s) => s.id === track.id) || track;
+    const src = playableSource(current);
+    if (!src?.uri) { toast("This song can't be edited"); return; }
+    navigation.navigate('Editor', { source: { uri: src.uri, title: track.title, artist: track.artist } });
+  };
   const liked = isLiked(track.id);
   const downloaded = isDownloaded(track.id);
   const downloading = isDownloading(track.id);
@@ -82,6 +95,9 @@ export default function TrackOptions({ track, visible, onClose, playlistId }) {
             )}
             <SheetItem icon="play-forward-outline" label="Play next" onPress={() => { playNext(track); toast('Playing next'); close(); }} />
             <SheetItem icon="list-outline" label="Add to queue" onPress={() => { addToQueue(track); toast('Added to queue'); close(); }} />
+            {EDITOR_SUPPORTED && (
+              <SheetItem icon="cut-outline" label="Cut / make ringtone" onPress={onEdit} />
+            )}
             {!!track.songId && (
               <SheetItem icon="share-social-outline" label="Share" onPress={() => { close(); shareSong(track); }} />
             )}

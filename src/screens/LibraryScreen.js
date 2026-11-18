@@ -7,6 +7,7 @@ import { colors } from '../theme';
 import { useLibrary } from '../context/LibraryContext';
 import { useCatalog } from '../context/CatalogContext';
 import { useLocalMusic, LOCAL_SUPPORTED } from '../context/LocalMusicContext';
+import { EDITOR_SUPPORTED } from '../../modules/audio-editor';
 import NamePrompt from '../components/NamePrompt';
 import Cover from '../components/Cover';
 
@@ -66,6 +67,14 @@ export default function LibraryScreen({ navigation }) {
           title="On this phone"
           sub={local.status === 'ready' ? `${local.tracks.length} songs saved on your phone` : 'Play songs saved on your phone'}
           onPress={() => navigation.navigate('LocalMusic')}
+        />
+      )}
+      {EDITOR_SUPPORTED && (
+        <Item
+          art={<GradientArt icon="cut" from="#6B1F4A" to="#FF8FB1" />}
+          title="Ringtones & edits"
+          sub="Cut songs, change their sound, set ringtones"
+          onPress={() => navigation.navigate('Edits')}
         />
       )}
     </View>
