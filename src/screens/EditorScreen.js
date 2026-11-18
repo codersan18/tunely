@@ -10,7 +10,7 @@ import Waveform, { MIN_CUT_MS } from '../components/Waveform';
 import Slider from '../components/Slider';
 import Sheet, { SheetItem } from '../components/Sheet';
 import { usePlayer } from '../context/PlayerContext';
-import { SOUND_KINDS, setPhoneSound } from '../utils/phoneSounds';
+import { SOUND_KINDS, SAVE_OPTIONS, SAVE_NOTE, setPhoneSound } from '../utils/phoneSounds';
 import { toast } from '../utils/platform';
 import { EQ_PRESETS, FLAT, presetName } from '../utils/eqPresets';
 
@@ -20,12 +20,7 @@ import { EQ_PRESETS, FLAT, presetName } from '../utils/eqPresets';
 const FADES = [0, 1000, 2000, 3000, 5000];
 const LENGTHS = [5000, 10000, 20000, 30000, 40000];
 const PRESETS = EQ_PRESETS;
-const SAVE_AS = [
-  { kind: 'ringtone', ...SOUND_KINDS.ringtone },
-  { kind: 'alarm', ...SOUND_KINDS.alarm },
-  { kind: 'notification', ...SOUND_KINDS.notification },
-  { kind: 'music', set: 'Just save it', icon: 'save-outline' },
-];
+const SAVE_AS = SAVE_OPTIONS;
 
 // 83500 ms -> "1:23.5"
 const clock = (ms) => {
@@ -171,7 +166,7 @@ export default function EditorScreen({ navigation, route }) {
       });
       setSaveOpen(false);
       setSaved(r);
-      if (kind !== 'music') setPhoneSound(r.uri, kind);
+      if (kind !== 'music') setPhoneSound(r.uri, kind, null, r.name);
     } catch (e) {
       if (e.code !== 'ERR_CANCELLED') toast(`Couldn't save: ${e.message}`);
     } finally {
@@ -338,7 +333,7 @@ export default function EditorScreen({ navigation, route }) {
             right={saving === o.kind ? <ActivityIndicator color={colors.accent} /> : null}
           />
         ))}
-        <Text style={styles.sheetNote}>Saved on this phone as an .m4a file in the {'"'}VibeRoom{'"'} folder, inside Ringtones, Alarms, Notifications or Music.</Text>
+        <Text style={styles.sheetNote}>{SAVE_NOTE}</Text>
       </Sheet>
 
       <Sheet visible={!!saved} onClose={() => setSaved(null)}>
@@ -352,7 +347,7 @@ export default function EditorScreen({ navigation, route }) {
               </View>
             </View>
             {Object.entries(SOUND_KINDS).filter(([k]) => k !== saved.kind).map(([k, o]) => (
-              <SheetItem key={k} icon={o.icon} label={o.set} onPress={() => setPhoneSound(saved.uri, k)} />
+              <SheetItem key={k} icon={o.icon} label={o.set} onPress={() => setPhoneSound(saved.uri, k, null, saved.name)} />
             ))}
             <SheetItem icon="folder-open-outline" label="See all my ringtones & edits"
               onPress={() => { setSaved(null); navigation.navigate('Tabs', { screen: 'Library', params: { screen: 'Edits' } }); }} />

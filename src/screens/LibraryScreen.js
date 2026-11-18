@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
 import { useLibrary } from '../context/LibraryContext';
 import { useCatalog } from '../context/CatalogContext';
-import { useLocalMusic, LOCAL_SUPPORTED } from '../context/LocalMusicContext';
+import { useLocalMusic, LOCAL_SUPPORTED, PLACE } from '../context/LocalMusicContext';
 import { EDITOR_SUPPORTED } from '../../modules/audio-editor';
 import NamePrompt from '../components/NamePrompt';
 import Cover from '../components/Cover';
@@ -63,9 +63,9 @@ export default function LibraryScreen({ navigation }) {
       />
       {LOCAL_SUPPORTED && (
         <Item
-          art={<GradientArt icon="phone-portrait" from="#5C3A1F" to="#F2B880" />}
-          title="On this phone"
-          sub={local.status === 'ready' ? `${local.tracks.length} songs saved on your phone` : 'Play songs saved on your phone'}
+          art={<GradientArt icon={PLACE.icon} from="#5C3A1F" to="#F2B880" />}
+          title={PLACE.title}
+          sub={local.status === 'ready' ? `${local.tracks.length} songs saved ${PLACE.where}` : `Play songs saved ${PLACE.where}`}
           onPress={() => navigation.navigate('LocalMusic')}
         />
       )}

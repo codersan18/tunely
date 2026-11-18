@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
-import { useLocalMusic, CATEGORIES } from '../context/LocalMusicContext';
+import { useLocalMusic, CATEGORIES, PLACE } from '../context/LocalMusicContext';
 import { usePlayer } from '../context/PlayerContext';
 import TrackRow from '../components/TrackRow';
 import Cover from '../components/Cover';
@@ -43,7 +43,13 @@ export default function LocalMusicScreen({ navigation }) {
       <Pressable onPress={() => navigation.goBack()} hitSlop={10}>
         <Ionicons name="chevron-back" size={28} color={colors.text} />
       </Pressable>
-      <Text style={styles.h1}>On this phone</Text>
+      <Text style={[styles.h1, { flex: 1 }]}>{PLACE.title}</Text>
+      {!!local.changeFolder && local.status === 'ready' && (
+        <Pressable onPress={local.changeFolder} hitSlop={8} style={styles.folderBtn}>
+          <Ionicons name="folder-open-outline" size={16} color={colors.text} />
+          <Text style={styles.folderText}>Change folder</Text>
+        </Pressable>
+      )}
     </View>
   );
 
@@ -56,23 +62,21 @@ export default function LocalMusicScreen({ navigation }) {
         {top}
         <View style={styles.center}>
           <LinearGradient colors={['#5C3A1F', '#F2B880']} style={styles.bigIcon}>
-            <Ionicons name="phone-portrait" size={44} color="#fff" />
+            <Ionicons name={PLACE.icon} size={44} color="#fff" />
           </LinearGradient>
           {asking ? (
             <>
               <Text style={styles.msg}>
-                {denied
-                  ? 'VibeRoom isn\'t allowed to see the music on your phone. Turn on "Music and audio" in Settings → Permissions.'
-                  : 'Play the songs saved on your phone: Music, Download, WhatsApp audio and more. They play from your phone; nothing is copied or uploaded.'}
+                {denied ? PLACE.denied : PLACE.intro}
               </Text>
               <Pressable onPress={local.requestAccess} style={styles.allowBtn}>
-                <Text style={styles.allowText}>{denied ? 'Open settings' : 'Allow access'}</Text>
+                <Text style={styles.allowText}>{denied ? 'Open settings' : PLACE.allow}</Text>
               </Pressable>
             </>
           ) : (
             <>
               <ActivityIndicator color={colors.accent} />
-              <Text style={styles.msg}>Looking for songs on your phone…</Text>
+              <Text style={styles.msg}>Looking for songs {PLACE.where}…</Text>
             </>
           )}
         </View>
@@ -161,6 +165,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   top: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 },
   h1: { color: colors.text, fontSize: 22, fontWeight: '800' },
+  folderBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 16, borderWidth: 1, borderColor: colors.textDim, paddingHorizontal: 12, paddingVertical: 6 },
+  folderText: { color: colors.text, fontSize: 13, fontWeight: '600' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 14 },
   bigIcon: { width: 96, height: 96, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   msg: { color: colors.textMuted, textAlign: 'center', fontSize: 14, lineHeight: 20 },

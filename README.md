@@ -16,6 +16,10 @@ It's the same app with the same song library and every feature, running in Chrom
 - **Manage songs:** Library → 🔒. Upload songs straight from your computer: pick many files at once, and their details are read from the files.
 - **Offline downloads:** songs are saved in the browser. Once the site has been opened, it also opens without internet.
 - **Media controls:** play/pause and next/previous work from the keyboard's media keys and the browser's media controls instead of the lock screen.
+- **On this computer** (instead of On this phone): choose a music folder; its songs are listed in the same sections (Songs, WhatsApp audio, Others, Artists, Albums, Folders), with tags and covers, and play from the folder. Chrome and Edge remember the folder; other browsers ask for it each visit. Code: `src/utils/localSource.web.js`.
+- **Equalizer:** the same presets and 5 bands, done with the browser's audio filters (`src/utils/playerExtras.web.js`).
+- **Audio editor:** the same editor (cut, fades, volume, equalizer), running in the browser (`modules/audio-editor/index.web.js`). Edits are saved in the browser as .wav files under Ringtones & edits. A website can't set a phone's ringtone, so "Save and download" downloads the file instead.
+- **Data saver:** on mobile data, the next song isn't loaded ahead of time.
 
 The admin password is remembered in that browser until you tap **Lock**.
 

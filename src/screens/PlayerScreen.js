@@ -10,7 +10,7 @@ import { useLibrary } from '../context/LibraryContext';
 import TrackOptions from '../components/TrackOptions';
 import SleepTimerSheet from '../components/SleepTimerSheet';
 import EqualizerSheet from '../components/EqualizerSheet';
-import { EQ_AVAILABLE } from '../../modules/audio-editor';
+import { EQ_AVAILABLE } from '../utils/playerExtras';
 import ShuffleButton from '../components/ShuffleButton';
 import { vibeLabel } from '../utils/smartShuffle';
 import { useSettings, SPEED_OPTIONS } from '../context/SettingsContext';

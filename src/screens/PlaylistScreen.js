@@ -8,7 +8,7 @@ import { useCatalog, hasArtist } from '../context/CatalogContext';
 import Cover from '../components/Cover';
 import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
-import { useLocalMusic } from '../context/LocalMusicContext';
+import { useLocalMusic, PLACE } from '../context/LocalMusicContext';
 import TrackRow from '../components/TrackRow';
 import NamePrompt from '../components/NamePrompt';
 import Sheet, { SheetItem } from '../components/Sheet';
@@ -43,8 +43,8 @@ export default function PlaylistScreen({ route, navigation }) {
     }
     if (playlistId === 'device') {
       return {
-        id: 'device', title: 'On this phone', color: '#5C3A1F', icon: 'phone-portrait', tracks: local.tracks,
-        description: 'Songs saved on your phone · play without internet',
+        id: 'device', title: PLACE.title, color: '#5C3A1F', icon: PLACE.icon, tracks: local.tracks,
+        description: `Songs saved ${PLACE.where} · play without internet`,
       };
     }
     // An artist, album or folder of songs on the phone: device:<artist|album|folder>:<name>
@@ -203,7 +203,7 @@ export default function PlaylistScreen({ route, navigation }) {
       return (
         <View style={styles.deviceBox}>
           <ActivityIndicator color={colors.accent} />
-          <Text style={styles.empty}>Looking for songs on your phone…</Text>
+          <Text style={styles.empty}>Looking for songs {PLACE.where}…</Text>
         </View>
       );
     }
@@ -212,17 +212,15 @@ export default function PlaylistScreen({ route, navigation }) {
       return (
         <View style={styles.deviceBox}>
           <Text style={styles.empty}>
-            {denied
-              ? 'VibeRoom isn\'t allowed to see the music on your phone. Turn on "Music and audio" in Settings → Permissions.'
-              : 'Let VibeRoom see the music saved on your phone (Music, Download, WhatsApp audio…). Songs play from your phone; nothing is copied or uploaded.'}
+            {denied ? PLACE.denied : PLACE.intro}
           </Text>
           <Pressable onPress={local.requestAccess} style={styles.allowBtn}>
-            <Text style={styles.allowText}>{denied ? 'Open settings' : 'Allow access'}</Text>
+            <Text style={styles.allowText}>{denied ? 'Open settings' : PLACE.allow}</Text>
           </Pressable>
         </View>
       );
     }
-    return <Text style={styles.empty}>No songs found on this phone. Pull down to look again.</Text>;
+    return <Text style={styles.empty}>No songs found {PLACE.where}. Pull down to look again.</Text>;
   })();
 
   return (

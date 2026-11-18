@@ -2,7 +2,7 @@
 // year and the cover picture. Used by the upload screen to fill in the form for you.
 // Plain JavaScript, so it works in the app as-is (no native code).
 
-import { File, FileMode, Paths } from 'expo-file-system';
+import { openReader, saveCoverForUpload } from './fileReader';
 import { LANGUAGES, MOODS } from './smartShuffle';
 
 const MAX_TAG_BYTES = 4 * 1024 * 1024; // tags (with cover) are rarely over a few hundred KB
@@ -256,17 +256,16 @@ const MAX_MOOV_BYTES = 16 * 1024 * 1024;
 // Raw frames ({ TIT2, TPE1, TALB, TCON, TDRC, APIC }) from an MP3, FLAC or M4A file, reading only
 // the tag part, never the whole song. null if the file has no tags we understand.
 async function readFrames(uri) {
-  const h = new File(uri).open(FileMode.ReadOnly);
+  const r = await openReader(uri);
   try {
-    const head = await h.readBytes(12);
+    const head = await r.read(0, 12);
     if (head.length < 12) return null;
     const tag = latin1(head.subarray(0, 4));
 
     if (tag.startsWith('ID3')) {
       const size = syncsafe(head, 6);
       if (size <= 0 || size > MAX_TAG_BYTES) return null;
-      h.offset = 10;
-      const rest = await h.readBytes(size);
+      const rest = await r.read(10, size);
       const bytes = new Uint8Array(10 + rest.length);
       bytes.set(head.subarray(0, 10), 0);
       bytes.set(rest, 10);
@@ -277,13 +276,12 @@ async function readFrames(uri) {
       const frames = {};
       let pos = 4;
       for (let n = 0; n < 128; n += 1) {
-        h.offset = pos;
-        const bh = await h.readBytes(4);
+        const bh = await r.read(pos, 4);
         if (bh.length < 4) break;
         const type = bh[0] & 0x7f;
         const len = (bh[1] << 16) | (bh[2] << 8) | bh[3];
         if ((type === 4 || type === 6) && len <= MAX_TAG_BYTES) {
-          const block = await h.readBytes(len);
+          const block = await r.read(pos + 4, len);
           if (type === 4) vorbisComments(block, frames);
           else {
             const pic = flacPicture(block);
@@ -298,10 +296,9 @@ async function readFrames(uri) {
 
     if (latin1(head.subarray(4, 8)) === 'ftyp') {
       // Find "moov" among the top-level boxes (it can come after the audio, so skip over boxes).
-      const size = h.size || 0;
+      const size = r.size || 0;
       for (let pos = 0; pos + 8 <= size;) {
-        h.offset = pos;
-        const bh = await h.readBytes(16);
+        const bh = await r.read(pos, 16);
         if (bh.length < 8) break;
         let len = be32(bh, 0);
         let hdr = 8;
@@ -309,15 +306,14 @@ async function readFrames(uri) {
         if (len < hdr) break;
         if (latin1(bh.subarray(4, 8)) === 'moov') {
           if (len > MAX_MOOV_BYTES) return null;
-          h.offset = pos + hdr;
-          return parseMoov(await h.readBytes(len - hdr));
+          return parseMoov(await r.read(pos + hdr, len - hdr));
         }
         pos += len;
       }
     }
     return null;
   } finally {
-    h.close();
+    r.close();
   }
 }
 
@@ -329,13 +325,7 @@ async function readFrames(uri) {
 export async function readTags(uri, { cover: withCover = true } = {}) {
   const details = tagsToDetails(await readFrames(uri));
   if (!details) return null;
-  if (withCover && details.picture) {
-    const ext = details.picture.mime.includes('png') ? 'png' : 'jpg';
-    const cover = new File(Paths.cache, `tag-cover-${Date.now()}-${Math.floor(Math.random() * 1e6)}.${ext}`);
-    cover.create({ overwrite: true });
-    cover.write(details.picture.data);
-    details.cover = { uri: cover.uri, name: `cover.${ext}`, mimeType: details.picture.mime };
-  }
+  if (withCover && details.picture) details.cover = saveCoverForUpload(details.picture);
   delete details.picture;
   return details;
 }

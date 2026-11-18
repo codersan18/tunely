@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, FlatList, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, Pressable, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,7 +8,7 @@ import AudioEditor from '../../modules/audio-editor';
 import Sheet, { SheetItem } from '../components/Sheet';
 import { usePlayer } from '../context/PlayerContext';
 import { SOUND_KINDS, setPhoneSound } from '../utils/phoneSounds';
-import { toast } from '../utils/platform';
+import { toast, confirmAction } from '../utils/platform';
 
 // The sounds made with the editor, saved on the phone (Ringtones/Alarms/Notifications/Music → VibeRoom).
 const KIND_ICON = { ringtone: 'call', alarm: 'alarm', notification: 'chatbubble-ellipses', music: 'musical-note' };
@@ -34,13 +34,8 @@ export default function EditsScreen({ navigation }) {
   const pickSong = () => navigation.navigate('PickSong');
 
   const remove = (e) => {
-    Alert.alert('Delete this sound?', `"${e.name}" will be deleted from the phone.`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive',
-        onPress: () => AudioEditor.deleteEdit(e.uri).then(() => { toast('Deleted'); load(); }).catch((err) => toast(err.message)),
-      },
-    ]);
+    confirmAction('Delete this sound?', `"${e.name}" will be deleted.`, 'Delete',
+      () => AudioEditor.deleteEdit(e.uri).then(() => { toast('Deleted'); load(); }).catch((err) => toast(err.message)));
   };
 
   const list = edits || [];
@@ -67,7 +62,7 @@ export default function EditsScreen({ navigation }) {
               <View style={[styles.icon, { backgroundColor: colors.accent }]}><Ionicons name="cut" size={24} color={colors.bg} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.title}>New edit</Text>
-                <Text style={styles.sub}>Choose a song from your phone or VibeRoom</Text>
+                <Text style={styles.sub}>Choose a song from VibeRoom or your own music</Text>
               </View>
             </Pressable>
             <Text style={styles.tip}>Or open any song's ••• menu → Cut / make ringtone.</Text>
@@ -105,7 +100,7 @@ export default function EditsScreen({ navigation }) {
             <Text numberOfLines={1} style={styles.sheetTitle}>{open.name}</Text>
             {Object.entries(SOUND_KINDS).map(([k, o]) => (
               <SheetItem key={k} icon={o.icon} label={o.set}
-                onPress={() => { const e = open; setOpen(null); setPhoneSound(e.uri, k, load); }} />
+                onPress={() => { const e = open; setOpen(null); setPhoneSound(e.uri, k, load, e.name); }} />
             ))}
             <SheetItem icon="cut-outline" label="Edit again"
               onPress={() => { const e = open; setOpen(null); navigation.navigate('Editor', { source: { uri: e.uri, title: e.name } }); }} />

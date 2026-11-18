@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView, Switch, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ScrollView, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Updates from 'expo-updates';
 import { colors } from '../theme';
 import { useSettings, TRANSITION_OPTIONS, SPEED_OPTIONS } from '../context/SettingsContext';
 import EqualizerSheet from '../components/EqualizerSheet';
-import { EQ_AVAILABLE } from '../../modules/audio-editor';
+import { EQ_AVAILABLE, DATA_SAVER_AVAILABLE } from '../utils/playerExtras';
 import { presetName } from '../utils/eqPresets';
 
 function Section({ title, children }) {
@@ -46,7 +46,6 @@ function Link({ icon, title, sub, onPress }) {
 export default function SettingsScreen({ navigation }) {
   const { transitions, dataSaver, speed, eqOn, eqBands, set } = useSettings();
   const [eqMenu, setEqMenu] = useState(false);
-  const isPhone = Platform.OS !== 'web';
 
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
@@ -73,7 +72,7 @@ export default function SettingsScreen({ navigation }) {
           )}
         </Section>
 
-        {isPhone && (
+        {DATA_SAVER_AVAILABLE && (
           <Section title="Data">
             <View style={styles.switchRow}>
               <View style={{ flex: 1 }}>

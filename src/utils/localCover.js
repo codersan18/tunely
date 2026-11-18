@@ -3,8 +3,8 @@
 // only (nothing is written to the phone). The last few are remembered so scrolling back is instant.
 
 import { useEffect, useState } from 'react';
-import { Directory, File, Paths } from 'expo-file-system';
 import { readCover, readCoverDataUri } from './readTags';
+import { writeLockScreenCover } from './fileReader';
 
 export const LOCAL_COVER = 'localcover:';
 export const localCover = (fileUri) => `${LOCAL_COVER}${fileUri}`;
@@ -34,34 +34,16 @@ function loadCover(fileUri) {
   return loading.get(fileUri);
 }
 
-// The lock screen can only show a cover from a web link or a file. For the song that's playing,
-// write its cover to one small file in the cache (the previous one is deleted), and return its uri.
-let lockFile = null;
+// The lock screen (or the browser's media controls) can't read a cover from inside a song: for the
+// song that's playing, the cover is saved as one small file (fileReader.js) and its link returned.
 let lockKey = 0;
-let cleaned = false;
 export async function lockScreenCover(artwork) {
   if (!isLocalCover(artwork)) return null;
   const key = ++lockKey;
-  if (!cleaned) { // covers left behind if the app was closed mid-song
-    cleaned = true;
-    try {
-      new Directory(Paths.cache).list()
-        .filter((f) => f instanceof File && f.name?.startsWith('lockscreen-cover-'))
-        .forEach((f) => f.delete());
-    } catch (e) { /* nothing to clean */ }
-  }
   try {
     const pic = await readCover(artwork.slice(LOCAL_COVER.length));
     if (key !== lockKey) return null; // another song started meanwhile
-    try { if (lockFile?.exists) lockFile.delete(); } catch (e) { /* already gone */ }
-    lockFile = null;
-    if (!pic) return null;
-    // A new name each time: the lock screen skips loading a link it has already shown.
-    const file = new File(Paths.cache, `lockscreen-cover-${Date.now()}.${pic.mime.includes('png') ? 'png' : 'jpg'}`);
-    file.create({ overwrite: true });
-    file.write(pic.data);
-    lockFile = file;
-    return file.uri;
+    return writeLockScreenCover(pic);
   } catch (e) {
     return null;
   }

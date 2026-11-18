@@ -1,25 +1,20 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState, Linking, Platform } from 'react-native';
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  Asset, AssetField, MediaType, Query, getPermissionsAsync, requestPermissionsAsync,
-} from 'expo-media-library';
 import { readTags } from '../utils/readTags';
 import { localCover } from '../utils/localCover';
+import * as source from '../utils/localSource';
 
 // Songs already saved on the phone (Music, Download, WhatsApp audio…), found through Android's
-// media library. They play straight from their file: nothing is copied or uploaded.
+// media library, or on the web the songs in a music folder on the computer (utils/localSource*.js).
+// They play straight from their file: nothing is copied or uploaded.
 // Only the song details read from each file's tags are remembered, so the list opens fast.
 
-export const LOCAL_SUPPORTED = Platform.OS === 'android';
-const TAGS_KEY = 'tunely:localTags:v1'; // { [assetId]: { m: modificationTime, title, artist, album } }
-const PAGE = 200;
-const MIN_SECONDS = 30; // shorter files are ringtones, notification sounds and voice notes
+export const LOCAL_SUPPORTED = source.LOCAL_SUPPORTED;
+export const PLACE = source.PLACE; // "On this phone" / "On this computer" and its wording
+const TAGS_KEY = 'tunely:localTags:v1'; // { [file id]: { m: modificationTime, title, artist, album } }
 const RESCAN_MS = 30000; // coming back to the app looks for new songs, at most this often
 const LocalMusicContext = createContext(null);
-
-// Android gives milliseconds (the docs say seconds): no song is 10 hours long, so tell them apart.
-const toSeconds = (d) => (!d ? 0 : d > 36000 ? d / 1000 : d);
 
 // "Artist - Title.mp3" -> { artist, title }; otherwise the file name is the title.
 function fromFilename(filename) {
@@ -37,8 +32,8 @@ export const CATEGORIES = [
   { key: 'others', title: 'Others', icon: 'folder-open' },
 ];
 
-function placeOf(uri) {
-  let path = uri.replace(/^file:\/\//, '');
+function placeOf(where) {
+  let path = where.replace(/^file:\/\//, '');
   try { path = decodeURIComponent(path); } catch (e) { /* keep as is */ }
   const parts = path.split('/').filter(Boolean);
   let folder = parts.length > 1 ? parts[parts.length - 2] : 'Phone';
@@ -48,35 +43,20 @@ function placeOf(uri) {
   return { folder, category };
 }
 
-const toTrack = (meta, uri, tags) => {
-  const guess = fromFilename(meta.filename);
+const toTrack = (f, tags) => {
+  const guess = fromFilename(f.filename);
   return {
-    ...placeOf(uri),
-    id: `local:${meta.id}`,
+    ...placeOf(f.path),
+    id: `local:${f.id}`,
     title: tags?.title || guess.title,
     artist: tags?.artist || guess.artist || 'Unknown artist',
     album: tags?.album || '',
-    url: uri,
-    artwork: localCover(uri), // read from the file when shown (utils/localCover.js)
-    duration: toSeconds(meta.duration),
+    url: f.uri,
+    artwork: localCover(f.uri), // read from the file when shown (utils/localCover.js)
+    duration: f.duration,
     local: true,
   };
 };
-
-async function listAudio() {
-  const all = [];
-  for (let offset = 0; ; offset += PAGE) {
-    const page = await new Query()
-      .eq(AssetField.MEDIA_TYPE, MediaType.AUDIO)
-      .orderBy({ key: AssetField.MODIFICATION_TIME, ascending: false })
-      .limit(PAGE)
-      .offset(offset)
-      .exeForMetadata();
-    all.push(...page);
-    if (page.length < PAGE) break;
-  }
-  return all.filter((m) => toSeconds(m.duration) >= MIN_SECONDS);
-}
 
 // Run `fn` over `items`, a few at a time.
 async function inBatches(items, size, fn) {
@@ -101,36 +81,33 @@ export function LocalMusicProvider({ children }) {
     scanning.current = true;
     lastScan.current = Date.now();
     try {
-      const metas = await listAudio();
+      const files = await source.listFiles();
       let cache = {};
       try { cache = JSON.parse((await AsyncStorage.getItem(TAGS_KEY)) || '{}'); } catch (e) { /* start fresh */ }
-      const known = (m) => cache[m.id]?.m === m.modificationTime && cache[m.id];
+      const known = (f) => cache[f.id]?.m === f.modified && cache[f.id];
 
       // 1. Show the list straight away, with details remembered from last time or from file names.
-      const entries = (await inBatches(metas, 25, async (m) => {
-        try { return { meta: m, uri: await new Asset(m.id).getUri() }; } catch (e) { return null; }
-      })).filter(Boolean);
-      setTracks(entries.map((e) => toTrack(e.meta, e.uri, known(e.meta))));
+      setTracks(files.map((f) => toTrack(f, known(f))));
       setStatus('ready');
 
       // 2. Read the tags of new or changed files, in the background.
       const next = {};
       const todo = [];
-      entries.forEach((e) => {
-        const hit = known(e.meta);
-        if (hit) next[e.meta.id] = hit; else todo.push(e);
+      files.forEach((f) => {
+        const hit = known(f);
+        if (hit) next[f.id] = hit; else todo.push(f);
       });
       if (todo.length) {
-        await inBatches(todo, 4, async (e) => {
+        await inBatches(todo, 4, async (f) => {
           let tags = null;
-          try { tags = await readTags(e.uri, { cover: false }); } catch (err) { /* not an MP3, or unreadable */ }
-          next[e.meta.id] = { m: e.meta.modificationTime, title: tags?.title || '', artist: tags?.artist || '', album: tags?.album || '' };
+          try { tags = await readTags(f.uri, { cover: false }); } catch (err) { /* no tags, or unreadable */ }
+          next[f.id] = { m: f.modified, title: tags?.title || '', artist: tags?.artist || '', album: tags?.album || '' };
         });
-        setTracks(entries.map((e) => toTrack(e.meta, e.uri, next[e.meta.id])));
+        setTracks(files.map((f) => toTrack(f, next[f.id])));
       }
       AsyncStorage.setItem(TAGS_KEY, JSON.stringify(next)).catch(() => {});
     } catch (e) {
-      console.warn('Could not read songs on the phone', e);
+      console.warn('Could not read the songs', e);
       setStatus((s) => (s === 'loading' ? 'ready' : s));
     } finally {
       scanning.current = false;
@@ -141,13 +118,13 @@ export function LocalMusicProvider({ children }) {
   const check = useCallback(async () => {
     if (!LOCAL_SUPPORTED) return;
     try {
-      const p = await getPermissionsAsync(false, ['audio']);
-      if (p.granted) {
+      const access = await source.checkAccess();
+      if (access === 'granted') {
         const listed = statusRef.current === 'ready';
         if (!listed) setStatus('loading');
         scan({ force: !listed }); // just allowed (e.g. in Settings): list now
       } else {
-        setStatus(p.canAskAgain ? 'needs-permission' : 'denied');
+        setStatus(access);
       }
     } catch (e) {
       setStatus('needs-permission');
@@ -162,18 +139,23 @@ export function LocalMusicProvider({ children }) {
     return () => sub.remove();
   }, [check]);
 
+  const afterAccess = useCallback((access) => {
+    if (access === 'granted') {
+      setStatus('loading');
+      scan({ force: true });
+    } else {
+      setStatus(access);
+    }
+  }, [scan]);
+
   const requestAccess = useCallback(async () => {
-    if (status === 'denied') { Linking.openSettings().catch(() => {}); return; }
-    try {
-      const p = await requestPermissionsAsync(false, ['audio']);
-      if (p.granted) {
-        setStatus('loading');
-        scan({ force: true });
-      } else {
-        setStatus(p.canAskAgain ? 'needs-permission' : 'denied');
-      }
-    } catch (e) { /* stay as is */ }
-  }, [status, scan]);
+    try { afterAccess(await source.requestAccess(status)); } catch (e) { /* stay as is */ }
+  }, [status, afterAccess]);
+
+  // Web: pick a different music folder.
+  const changeFolder = useMemo(() => (source.changeFolder
+    ? async () => { try { afterAccess(await source.changeFolder()); } catch (e) { /* cancelled */ } }
+    : null), [afterAccess]);
 
   const rescan = useCallback(() => scan({ force: true }), [scan]);
 
@@ -200,7 +182,8 @@ export function LocalMusicProvider({ children }) {
     return { byCategory, artists: sorted(artists), albums: sorted(albums), folders: sorted(folders) };
   }, [tracks]);
 
-  const value = useMemo(() => ({ status, tracks, groups, requestAccess, rescan }), [status, tracks, groups, requestAccess, rescan]);
+  const value = useMemo(() => ({ status, tracks, groups, requestAccess, rescan, changeFolder }),
+    [status, tracks, groups, requestAccess, rescan, changeFolder]);
   return <LocalMusicContext.Provider value={value}>{children}</LocalMusicContext.Provider>;
 }
 

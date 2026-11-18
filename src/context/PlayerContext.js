@@ -6,12 +6,13 @@ import { useNetworkState, NetworkStateType } from 'expo-network';
 import { useLibrary } from './LibraryContext';
 import { useCatalog } from './CatalogContext';
 import { useSettings } from './SettingsContext';
+import { useLocalMusic } from './LocalMusicContext';
 import { pickSimilar } from '../utils/smartShuffle';
 import { isLocalCover, lockScreenCover } from '../utils/localCover';
 import { addListen } from '../utils/stats';
 import { getDeviceId } from '../utils/device';
 import { reportPlay } from '../api/catalog';
-import AudioEditor from '../../modules/audio-editor';
+import { PLAYLIST_OPTIONS, applyEq, applyDataSaver, onPlayerStatus } from '../utils/playerExtras';
 
 const PlayerContext = createContext(null);
 
@@ -55,14 +56,16 @@ export function PlayerProvider({ children }) {
 
   // The native playlist. One for the whole app session: after a playback error, play() prepares it
   // again (patches/expo-audio+*.patch), so it never has to be rebuilt.
-  const [playlist] = useState(() => createAudioPlaylist({ updateInterval: 500 }));
+  const [playlist] = useState(() => createAudioPlaylist(PLAYLIST_OPTIONS));
   const status = useAudioPlaylistStatus(playlist);
   useEffect(() => () => { try { playlist.release(); } catch (e) { /* already gone */ } }, [playlist]);
 
   // Liked songs, playlists and "Jump back in" keep their own copy of each song, saved on the phone.
   // Its link goes stale when the song file changes on the server (compression gives it a new one),
   // so always play the server's current version of the song.
-  const latest = useMemo(() => new Map(songs.map((s) => [s.id, s])), [songs]);
+  // Songs from "On this computer" (web) get a new blob: link each visit: use the current one.
+  const { tracks: localTracks } = useLocalMusic();
+  const latest = useMemo(() => new Map([...localTracks, ...songs].map((s) => [s.id, s])), [songs, localTracks]);
   const latestRef = useRef(latest); latestRef.current = latest;
   const fresh = useCallback((t) => {
     const s = latestRef.current.get(t.id);
@@ -282,8 +285,14 @@ export function PlayerProvider({ children }) {
       if (cancelled || !raw || queueRef.current.length) return; // something is already playing
       const s = JSON.parse(raw);
       if (!s?.queue?.length) return;
-      const q = s.queue.map((t) => toEntry(t));
-      const i = Math.min(Math.max(0, s.index | 0), q.length - 1);
+      // blob: links (web: computer songs and edits) don't survive a reload: leave those songs out.
+      const kept = s.queue.map((t, n) => ({ t, n })).filter(({ t }) => !(typeof t.url === 'string' && t.url.startsWith('blob:')));
+      if (!kept.length) return;
+      const at = kept.findIndex(({ n }) => n >= (s.index | 0));
+      const sameSong = at >= 0 && kept[at].n === (s.index | 0);
+      const q = kept.map(({ t }) => toEntry(t));
+      const i = Math.min(Math.max(0, at < 0 ? q.length - 1 : at), q.length - 1);
+      if (!sameSong) s.position = 0;
       resume.current = { qid: q[i].qid, position: s.position || 0 };
       context.current = new Set(s.context?.length ? s.context : q.map((t) => t.id));
       if (nextShuffle[s.shuffleMode]) setShuffleMode(s.shuffleMode);
@@ -348,25 +357,25 @@ export function PlayerProvider({ children }) {
   }, [speed, playlist, currentTrack?.qid]);
 
   // ---- data saver ----
-  // On mobile data, the player loads only ~50 s ahead instead of the whole song and the next one
-  // (patches/expo-audio+*.patch adds this switch).
+  // On mobile data, load less ahead: on the phone ~50 s instead of the whole song and the next one
+  // (patches/expo-audio+*.patch); in the browser, the next song isn't loaded early (utils/playerExtras*).
   const onMobileData = network?.type === NetworkStateType.CELLULAR;
   useEffect(() => {
-    try { playlist.dataSaver = !!(dataSaver && onMobileData); } catch (e) { /* older app build */ }
+    applyDataSaver(playlist, dataSaver, onMobileData);
   }, [dataSaver, onMobileData, playlist]);
 
-  // Equalizer (Settings or the player's EQ button): Android's equalizer on the player's audio
-  // session (modules/audio-editor, PlaybackEq.kt). Needs an APK with the editor module and the
-  // patched expo-audio; older builds simply have no equalizer.
-  const [eqStatus, setEqStatus] = useState({ supported: !!AudioEditor?.setPlaybackEq, active: false });
+  // ---- equalizer (Settings or the player's EQ button) ----
+  // Phone: Android's equalizer on the player's audio session. Browser: Web Audio filters.
+  const [eqStatus, setEqStatus] = useState({ supported: true, active: false });
   const currentQid = currentTrack?.qid;
   useEffect(() => {
-    if (!AudioEditor?.setPlaybackEq) return;
-    let session = 0;
-    try { session = playlist.audioSessionId || 0; } catch (e) { /* older app build */ }
-    if (!session) { setEqStatus({ supported: false, active: false }); return; }
-    try { setEqStatus(AudioEditor.setPlaybackEq(session, !!eqOn, eqBands || [])); } catch (e) { setEqStatus({ supported: false, active: false }); }
+    setEqStatus(applyEq(playlist, eqOn, eqBands));
   }, [eqOn, eqBands, playlist, currentQid]);
+
+  // The browser player makes a new <audio> element per song: route each one through the equalizer.
+  useEffect(() => {
+    onPlayerStatus(playlist, status.playing);
+  }, [playlist, status]);
 
   // ---- volume: smooth transitions and the sleep timer's fade-out ----
   // Driven by the player's own status updates (twice a second), which keep coming with the screen off.

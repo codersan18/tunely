@@ -5,6 +5,7 @@ import { File } from 'expo-file-system';
 import { colors } from '../theme';
 import { keyStore } from '../utils/files';
 import { shareSong } from '../utils/share';
+import { fileFor } from '../utils/localFiles';
 import Cover from './Cover';
 import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
@@ -41,9 +42,10 @@ export default function TrackOptions({ track, visible, onClose, playlistId }) {
     const name = decodeURIComponent(track.url.split('/').pop() || `${track.title}.mp3`);
     const ext = (name.match(/\.([a-z0-9]+)$/i)?.[1] || 'mp3').toLowerCase();
     const mimeType = { mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', flac: 'audio/flac', ogg: 'audio/ogg', opus: 'audio/ogg' }[ext] || 'audio/mpeg';
-    let size = 0;
-    try { size = new File(track.url).size || 0; } catch (e) { /* unknown */ }
-    navigation.navigate('Admin', { files: [{ uri: track.url, name, mimeType, size }] });
+    const file = fileFor(track.url); // web: the browser File of a song from "On this computer"
+    let size = file?.size || 0;
+    if (!file) { try { size = new File(track.url).size || 0; } catch (e) { /* unknown */ } }
+    navigation.navigate('Admin', { files: [{ uri: track.url, name: file?.name || name, mimeType: file?.type || mimeType, size, file: file || undefined }] });
   };
   const close = () => { setMode('menu'); onClose(); };
 

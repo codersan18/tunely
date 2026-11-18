@@ -2,11 +2,17 @@ import { Alert, AppState } from 'react-native';
 import AudioEditor, { EDITOR_SUPPORTED } from '../../modules/audio-editor';
 import { toast } from './platform';
 
+// What the editor's Save button offers, and the note under it.
+export const SAVE_NOTE = 'Saved on this phone as an .m4a file in the "VibeRoom" folder, inside Ringtones, Alarms, Notifications or Music.';
 export const SOUND_KINDS = {
   ringtone: { label: 'Ringtone', set: 'Set as ringtone', icon: 'call-outline', done: 'Ringtone set' },
   alarm: { label: 'Alarm', set: 'Set as alarm sound', icon: 'alarm-outline', done: 'Alarm sound set' },
   notification: { label: 'Notification', set: 'Set as notification / SMS sound', icon: 'chatbubble-ellipses-outline', done: 'Notification and SMS sound set' },
 };
+export const SAVE_OPTIONS = [
+  ...Object.entries(SOUND_KINDS).map(([kind, o]) => ({ kind, ...o })),
+  { kind: 'music', set: 'Just save it', icon: 'save-outline' },
+];
 
 // Android lets an app change the phone's sounds only after the person turns on "Modify system
 // settings" for it. If that's off, explain, open the setting, and finish the job when they come back.
@@ -34,8 +40,8 @@ async function apply({ uri, kind, onDone }) {
   }
 }
 
-/** Makes `uri` the phone's ringtone / alarm / notification sound. */
-export function setPhoneSound(uri, kind, onDone) {
+/** Makes `uri` the phone's ringtone / alarm / notification sound. (`name` is used on the web.) */
+export function setPhoneSound(uri, kind, onDone, name) { // eslint-disable-line no-unused-vars
   if (!EDITOR_SUPPORTED) return;
   if (AudioEditor.canWriteSettings()) { apply({ uri, kind, onDone }); return; }
   Alert.alert(

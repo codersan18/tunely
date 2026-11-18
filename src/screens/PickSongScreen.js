@@ -3,14 +3,14 @@ import { View, Text, Pressable, StyleSheet, FlatList, TextInput, ActivityIndicat
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, formatTime } from '../theme';
-import { useLocalMusic, CATEGORIES } from '../context/LocalMusicContext';
+import { useLocalMusic, CATEGORIES, PLACE } from '../context/LocalMusicContext';
 import { useCatalog } from '../context/CatalogContext';
 import { useLibrary } from '../context/LibraryContext';
 import Cover from '../components/Cover';
 
 // "New edit": choose the song to cut, from the songs on the phone or the VibeRoom library.
 const TABS = [
-  { key: 'phone', title: 'On this phone', icon: 'phone-portrait-outline' },
+  { key: 'phone', title: PLACE.title, icon: PLACE.icon },
   { key: 'library', title: 'VibeRoom songs', icon: 'musical-notes-outline' },
 ];
 
@@ -40,9 +40,9 @@ export default function PickSongScreen({ navigation }) {
     const asking = local.status === 'needs-permission' || local.status === 'denied';
     empty = asking ? (
       <View style={styles.center}>
-        <Text style={styles.emptyText}>Allow VibeRoom to see the music saved on your phone.</Text>
+        <Text style={styles.emptyText}>{PLACE.intro}</Text>
         <Pressable onPress={local.requestAccess} style={styles.allow}>
-          <Text style={styles.allowText}>{local.status === 'denied' ? 'Open settings' : 'Allow access'}</Text>
+          <Text style={styles.allowText}>{local.status === 'denied' ? 'Open settings' : PLACE.allow}</Text>
         </Pressable>
       </View>
     ) : <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />;
