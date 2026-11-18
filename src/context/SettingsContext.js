@@ -5,11 +5,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 //   transitions: seconds of fade between songs (0 = off)
 //   dataSaver:   on mobile data, load only a little ahead (see PlayerContext)
 //   speed:       playback speed
+//   eqOn, eqBands: equalizer for songs as they play (dB per band, see utils/eqPresets.js)
 
 const KEY = 'tunely:settings:v1';
 export const TRANSITION_OPTIONS = [0, 3, 6, 10];
 export const SPEED_OPTIONS = [0.75, 1, 1.25, 1.5, 2];
-const DEFAULTS = { transitions: 0, dataSaver: false, speed: 1 };
+const DEFAULTS = { transitions: 0, dataSaver: false, speed: 1, eqOn: false, eqBands: [0, 0, 0, 0, 0] };
 
 const SettingsContext = createContext(null);
 

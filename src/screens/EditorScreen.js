@@ -12,22 +12,14 @@ import Sheet, { SheetItem } from '../components/Sheet';
 import { usePlayer } from '../context/PlayerContext';
 import { SOUND_KINDS, setPhoneSound } from '../utils/phoneSounds';
 import { toast } from '../utils/platform';
+import { EQ_PRESETS, FLAT, presetName } from '../utils/eqPresets';
 
 // Audio editor: cut a song, shape its sound, and save it on the phone as a ringtone, alarm,
 // notification sound or just a new file. Everything runs on the phone (modules/audio-editor).
 
 const FADES = [0, 1000, 2000, 3000, 5000];
 const LENGTHS = [5000, 10000, 20000, 30000, 40000];
-const FLAT = [0, 0, 0, 0, 0];
-const PRESETS = [
-  { name: 'Flat', eq: FLAT },
-  { name: 'Bass boost', eq: [8, 4, 0, 0, 0] },
-  { name: 'Treble boost', eq: [0, 0, 0, 4, 7] },
-  { name: 'Vocal', eq: [-3, -1, 4, 4, 1] },
-  { name: 'Rock', eq: [5, 2, -2, 3, 5] },
-  { name: 'Pop', eq: [-1, 2, 4, 2, -1] },
-  { name: 'Classical', eq: [4, 2, -1, 2, 4] },
-];
+const PRESETS = EQ_PRESETS;
 const SAVE_AS = [
   { kind: 'ringtone', ...SOUND_KINDS.ringtone },
   { kind: 'alarm', ...SOUND_KINDS.alarm },
@@ -165,7 +157,7 @@ export default function EditorScreen({ navigation, route }) {
     stopPreview(); setEnd(Math.min(duration, Math.round(p)));
   };
 
-  const preset = PRESETS.find((p) => p.eq.every((v, i) => v === eq[i]))?.name || 'Custom';
+  const preset = presetName(eq);
   const changed = gainDb !== 0 || fadeIn || fadeOut || preset !== 'Flat';
   const reset = () => { setGainDb(0); setFadeIn(0); setFadeOut(0); setEq(FLAT); };
 

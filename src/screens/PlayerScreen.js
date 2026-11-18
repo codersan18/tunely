@@ -9,6 +9,8 @@ import { usePlayer } from '../context/PlayerContext';
 import { useLibrary } from '../context/LibraryContext';
 import TrackOptions from '../components/TrackOptions';
 import SleepTimerSheet from '../components/SleepTimerSheet';
+import EqualizerSheet from '../components/EqualizerSheet';
+import { EQ_AVAILABLE } from '../../modules/audio-editor';
 import ShuffleButton from '../components/ShuffleButton';
 import { vibeLabel } from '../utils/smartShuffle';
 import { useSettings, SPEED_OPTIONS } from '../context/SettingsContext';
@@ -74,7 +76,8 @@ export default function PlayerScreen({ navigation }) {
     smartShuffle, upNext, repeat, cycleRepeat, sleepAt, sleepAfterTrack,
   } = usePlayer();
   const { isLiked, toggleLike, isDownloaded } = useLibrary();
-  const { speed, set: setSettings } = useSettings();
+  const { speed, eqOn, set: setSettings } = useSettings();
+  const [eqMenu, setEqMenu] = useState(false);
   const nextSpeed = () => setSettings({ speed: SPEED_OPTIONS[(SPEED_OPTIONS.indexOf(speed) + 1) % SPEED_OPTIONS.length] || 1 });
   const [menu, setMenu] = useState(false);
   const [sleepMenu, setSleepMenu] = useState(false);
@@ -173,6 +176,11 @@ export default function PlayerScreen({ navigation }) {
           <Pressable onPress={nextSpeed} hitSlop={10} style={styles.footerBtn} accessibilityLabel="Playback speed">
             <Text style={[styles.speedText, speed !== 1 && { color: colors.accent }]}>{`${speed}×`}</Text>
           </Pressable>
+          {EQ_AVAILABLE && (
+            <Pressable onPress={() => setEqMenu(true)} hitSlop={10} style={styles.footerBtn} accessibilityLabel="Equalizer">
+              <MaterialCommunityIcons name="equalizer" size={22} color={eqOn ? colors.accent : colors.textMuted} />
+            </Pressable>
+          )}
           {smartShuffle && upNext[0] && (
             <Pressable onPress={() => navigation.navigate('Queue')} style={styles.smartPill}>
               <Ionicons name="sparkles" size={14} color={colors.accent} />
@@ -189,6 +197,7 @@ export default function PlayerScreen({ navigation }) {
       </SafeAreaView>
       {menu && <TrackOptions track={currentTrack} visible={menu} onClose={() => setMenu(false)} />}
       <SleepTimerSheet visible={sleepMenu} onClose={() => setSleepMenu(false)} />
+      {EQ_AVAILABLE && <EqualizerSheet visible={eqMenu} onClose={() => setEqMenu(false)} />}
     </LinearGradient>
   );
 }

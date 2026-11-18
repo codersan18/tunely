@@ -1,8 +1,8 @@
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
-index 6c81fce..8c6434f 100644
+index 6c81fce..fb6d50e 100644
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
 +++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
-@@ -1013,6 +1013,13 @@ class AudioModule : Module() {
+@@ -1013,6 +1013,20 @@ class AudioModule : Module() {
          }
        }
  
@@ -11,6 +11,13 @@ index 6c81fce..8c6434f 100644
 +        playlist.dataSaver
 +      }.set { playlist, on: Boolean ->
 +        playlist.dataSaver = on
++      }
++
++      // VibeRoom patch: the player's audio session, so the app's equalizer can be attached to it.
++      Property("audioSessionId") { playlist ->
++        runOnMain {
++          playlist.ref.audioSessionId
++        }
 +      }
 +
        Property("loop") { playlist ->

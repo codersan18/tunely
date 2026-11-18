@@ -52,3 +52,6 @@ modules/*/android/build/
 
 # Personal editor settings
 .vscode/
+modules/*/android/.classpath
+modules/*/android/.project
+modules/*/android/.settings/

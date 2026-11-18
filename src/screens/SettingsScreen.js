@@ -1,10 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView, Switch, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Updates from 'expo-updates';
 import { colors } from '../theme';
 import { useSettings, TRANSITION_OPTIONS, SPEED_OPTIONS } from '../context/SettingsContext';
+import EqualizerSheet from '../components/EqualizerSheet';
+import { EQ_AVAILABLE } from '../../modules/audio-editor';
+import { presetName } from '../utils/eqPresets';
 
 function Section({ title, children }) {
   return (
@@ -41,7 +44,8 @@ function Link({ icon, title, sub, onPress }) {
 }
 
 export default function SettingsScreen({ navigation }) {
-  const { transitions, dataSaver, speed, set } = useSettings();
+  const { transitions, dataSaver, speed, eqOn, eqBands, set } = useSettings();
+  const [eqMenu, setEqMenu] = useState(false);
   const isPhone = Platform.OS !== 'web';
 
   return (
@@ -61,6 +65,12 @@ export default function SettingsScreen({ navigation }) {
           <Text style={[styles.rowTitle, { marginTop: 18 }]}>Playback speed</Text>
           <Text style={styles.rowSub}>Also in the player (the speed button).</Text>
           <Chips options={SPEED_OPTIONS} value={speed} label={(s) => `${s}×`} onChange={(s) => set({ speed: s })} />
+
+          {EQ_AVAILABLE && (
+            <View style={{ marginTop: 10 }}>
+              <Link icon="options-outline" title="Equalizer" sub={eqOn ? `On · ${presetName(eqBands)}` : 'Off · bass, treble and presets'} onPress={() => setEqMenu(true)} />
+            </View>
+          )}
         </Section>
 
         {isPhone && (
@@ -94,6 +104,7 @@ export default function SettingsScreen({ navigation }) {
           </Text>
         )}
       </ScrollView>
+      {EQ_AVAILABLE && <EqualizerSheet visible={eqMenu} onClose={() => setEqMenu(false)} />}
     </SafeAreaView>
   );
 }

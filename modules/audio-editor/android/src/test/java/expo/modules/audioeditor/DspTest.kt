@@ -92,6 +92,17 @@ class DspTest {
     }
   }
 
+  @Test fun playbackEqBandMapping() {
+    val gains = listOf(6.0, 0.0, -4.0, 2.0, 8.0)
+    // On the app's own band centres, the gain is exactly that band's.
+    for (i in EQ_FREQS.indices) assertEquals(gains[i], PlaybackEq.gainAt(EQ_FREQS[i].toDouble(), gains), 1e-9)
+    // Below and above the outer bands: the outer band's gain.
+    assertEquals(6.0, PlaybackEq.gainAt(20.0, gains), 1e-9)
+    assertEquals(8.0, PlaybackEq.gainAt(20000.0, gains), 1e-9)
+    // Half way (on a log scale) between 230 Hz and 910 Hz: half way between 0 and -4 dB.
+    assertEquals(-2.0, PlaybackEq.gainAt(Math.sqrt(230.0 * 910.0), gains), 1e-6)
+  }
+
   @Test fun encoderRates() {
     assertEquals(44100, encoderRate(44100))
     assertEquals(48000, encoderRate(96000))

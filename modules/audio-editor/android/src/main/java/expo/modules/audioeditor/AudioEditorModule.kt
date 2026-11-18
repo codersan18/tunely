@@ -133,7 +133,13 @@ class AudioEditorModule : Module() {
       Unit
     }
 
+    // Equalizer for songs as they play (see PlaybackEq.kt). `sessionId` is the player's audio session.
+    Function("setPlaybackEq") { sessionId: Int, enabled: Boolean, gainsDb: List<Double> ->
+      PlaybackEq.apply(sessionId, enabled, gainsDb)
+    }
+
     OnDestroy {
+      PlaybackEq.release()
       stopPreview()
       generation.incrementAndGet()
       worker.shutdown()

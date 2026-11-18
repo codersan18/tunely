@@ -11,6 +11,7 @@ import { isLocalCover, lockScreenCover } from '../utils/localCover';
 import { addListen } from '../utils/stats';
 import { getDeviceId } from '../utils/device';
 import { reportPlay } from '../api/catalog';
+import AudioEditor from '../../modules/audio-editor';
 
 const PlayerContext = createContext(null);
 
@@ -49,7 +50,7 @@ const metaOf = (t) => ({
 export function PlayerProvider({ children }) {
   const { playableSource, addRecent, downloadedTracks } = useLibrary();
   const { songs, status: catalogStatus } = useCatalog();
-  const { transitions, dataSaver, speed } = useSettings();
+  const { transitions, dataSaver, speed, eqOn, eqBands } = useSettings();
   const network = useNetworkState();
 
   // The native playlist. One for the whole app session: after a playback error, play() prepares it
@@ -354,6 +355,19 @@ export function PlayerProvider({ children }) {
     try { playlist.dataSaver = !!(dataSaver && onMobileData); } catch (e) { /* older app build */ }
   }, [dataSaver, onMobileData, playlist]);
 
+  // Equalizer (Settings or the player's EQ button): Android's equalizer on the player's audio
+  // session (modules/audio-editor, PlaybackEq.kt). Needs an APK with the editor module and the
+  // patched expo-audio; older builds simply have no equalizer.
+  const [eqStatus, setEqStatus] = useState({ supported: !!AudioEditor?.setPlaybackEq, active: false });
+  const currentQid = currentTrack?.qid;
+  useEffect(() => {
+    if (!AudioEditor?.setPlaybackEq) return;
+    let session = 0;
+    try { session = playlist.audioSessionId || 0; } catch (e) { /* older app build */ }
+    if (!session) { setEqStatus({ supported: false, active: false }); return; }
+    try { setEqStatus(AudioEditor.setPlaybackEq(session, !!eqOn, eqBands || [])); } catch (e) { setEqStatus({ supported: false, active: false }); }
+  }, [eqOn, eqBands, playlist, currentQid]);
+
   // ---- volume: smooth transitions and the sleep timer's fade-out ----
   // Driven by the player's own status updates (twice a second), which keep coming with the screen off.
   const volume = useRef(1);
@@ -566,9 +580,10 @@ export function PlayerProvider({ children }) {
     jumpTo,
     clearUpNext,
     setSleepTimer,
+    eqStatus,
   }), [currentTrack, queue, upNext, status.playing, status.isBuffering, status.currentTime, status.duration,
     shuffle, smart, shuffleMode, repeat, sleepAt, sleepAfterTrack, playTrack, togglePlay, pause, next, previous, seekTo,
-    playNext, addToQueue, removeFromQueue, jumpTo, clearUpNext, setSleepTimer]);
+    playNext, addToQueue, removeFromQueue, jumpTo, clearUpNext, setSleepTimer, eqStatus]);
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
