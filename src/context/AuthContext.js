@@ -39,7 +39,7 @@ export function AuthProvider({ children }) {
     diag('signedIn', `session=${!!data?.session} len=${data?.session?.length || 0} user=${!!data?.user?.id} msg=${data?.message || ''}`);
     if (!data?.session) {
       setError(data?.message || 'Sign-in didn\'t finish. Try again.');
-      return;
+      return false;
     }
     try {
       await keyStore.set(SESSION_KEY, data.session);
@@ -53,6 +53,7 @@ export function AuthProvider({ children }) {
     setUser(data.user);
     setError('');
     setStatus('signed-in');
+    return true;
   }, []);
 
   const clearAll = useCallback(async (why = '') => {
@@ -66,6 +67,7 @@ export function AuthProvider({ children }) {
     await clearStats();
     setSession(null);
     setUser(null);
+    setGoogleBusy(false);
     setStatus('signed-out');
   }, []);
 
@@ -104,16 +106,17 @@ export function AuthProvider({ children }) {
       setBusy(true);
       const link = await Linking.getInitialURL().catch(() => null);
       if (typeof link === 'string' && /auth\/callback/.test(link)) setGoogleBusy(true);
+      let ok = false;
       try {
         const back = await pendingGoogleReturn();
         diag('pendingGoogleReturn', back ? 'got session' : 'nothing');
-        if (back) await signedIn(back);
+        if (back) ok = await signedIn(back);
       } catch (e) {
         diag('start google error', `${e.status} ${e.code} ${e.message}`);
         setError(e.message || 'Google sign-in didn\'t finish. Try again.');
       } finally {
         setBusy(false);
-        setGoogleBusy(false);
+        if (!ok) setGoogleBusy(false);
       }
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -127,17 +130,17 @@ export function AuthProvider({ children }) {
       if (resuming.current) return;
       resuming.current = true;
       if (typeof url === 'string' && /auth\/callback/.test(url)) setGoogleBusy(true);
+      let ok = false;
       try {
         const back = await resumeGoogle(url);
         if (back) diag('resumeGoogle', `got session (url=${!!url})`);
-        if (back) { setBusy(true); await signedIn(back); }
+        if (back) { setGoogleBusy(true); ok = await signedIn(back); }
       } catch (e) {
         diag('resume error', `${e.status} ${e.code} ${e.message}`);
         setError(e.message);
       } finally {
         resuming.current = false;
-        setBusy(false);
-        setGoogleBusy(false);
+        if (!ok) setGoogleBusy(false);
       }
     };
     const linkSub = Linking.addEventListener('url', (e) => resume(e.url));
@@ -164,12 +167,13 @@ export function AuthProvider({ children }) {
   const signInGoogle = useCallback(() => run(async () => {
     diag('google tapped');
     setGoogleBusy(true);
+    let ok = false;
     try {
       const back = await googleFlow();
       diag('googleFlow done', back ? 'got session' : 'null');
-      if (back) await signedIn(back);
+      if (back) ok = await signedIn(back);
     } finally {
-      setGoogleBusy(false);
+      if (!ok) setGoogleBusy(false);
     }
   }), [run, signedIn]);
 

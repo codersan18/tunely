@@ -59,7 +59,7 @@ export default function ProfileScreen({ navigation }) {
             <Text numberOfLines={1} style={styles.name}>{profile?.name}</Text>
             <View style={styles.actions}>
               <Pressable onPress={() => setEditing(true)} style={({ pressed }) => [styles.action, pressed && { opacity: 0.6 }]} accessibilityRole="button">
-                <Ionicons name="pencil" size={15} color={colors.text} />
+                <Ionicons name="create-outline" size={17} color={colors.text} />
                 <Text style={styles.actionText}>Edit profile</Text>
               </Pressable>
               <Pressable onPress={switchProfile} style={({ pressed }) => [styles.action, pressed && { opacity: 0.6 }]} accessibilityRole="button">

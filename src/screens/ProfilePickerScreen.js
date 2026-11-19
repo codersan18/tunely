@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { useProfiles } from '../context/ProfilesContext';
 import ProfileAvatar from '../components/ProfileAvatar';
 import ProfileEditor from '../components/ProfileEditor';
+import LoadingScreen from '../components/LoadingScreen';
 
 const MAX_PROFILES = 6;
 
@@ -20,9 +21,7 @@ export default function ProfilePickerScreen() {
   const [managing, setManaging] = useState(false);
   const [editing, setEditing] = useState(undefined); // undefined = closed, null = new, profile = edit
 
-  if (!profiles) {
-    return <View style={[styles.screen, styles.center]}><ActivityIndicator color={colors.accent} size="large" /></View>;
-  }
+  if (!profiles) return <LoadingScreen />;
 
   const open = (p) => (managing ? setEditing(p) : select(p.id));
 
@@ -39,7 +38,9 @@ export default function ProfilePickerScreen() {
                   <ProfileAvatar avatar={p.avatar} size={104} photo={user?.image} name={p.name} />
                   {managing && (
                     <View style={styles.editOverlay}>
-                      <Ionicons name="pencil" size={30} color="#FFFFFF" />
+                      <View style={styles.editBadge}>
+                        <Ionicons name="create-outline" size={22} color="#FFFFFF" />
+                      </View>
                     </View>
                   )}
                 </View>
@@ -58,7 +59,7 @@ export default function ProfilePickerScreen() {
           </View>
 
           <Pressable onPress={() => setManaging((m) => !m)} style={({ pressed }) => [styles.manage, managing && styles.manageOn, pressed && { opacity: 0.7 }]}>
-            <Ionicons name={managing ? 'checkmark' : 'pencil'} size={16} color={managing ? colors.bg : colors.text} />
+            <Ionicons name={managing ? 'checkmark' : 'settings-outline'} size={16} color={managing ? colors.bg : colors.text} />
             <Text style={[styles.manageText, managing && { color: colors.bg }]}>{managing ? 'Done' : 'Manage profiles'}</Text>
           </Pressable>
           <Text style={styles.note}>Each profile has its own likes, playlists and listening stats. Downloads are shared on this device.</Text>
@@ -78,7 +79,8 @@ const styles = StyleSheet.create({
   tile: { width: 120, alignItems: 'center', gap: 8 },
   ring: { padding: 3, borderRadius: 24, borderWidth: 3, borderColor: 'transparent' },
   ringLast: { borderColor: 'rgba(255,255,255,0.35)' },
-  editOverlay: { ...StyleSheet.absoluteFillObject, margin: 3, borderRadius: 19, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+  editOverlay: { ...StyleSheet.absoluteFillObject, margin: 3, borderRadius: 19, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' },
+  editBadge: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(18,18,18,0.75)', borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   add: { width: 110, height: 110, borderRadius: 20, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.textDim, alignItems: 'center', justifyContent: 'center' },
   name: { color: colors.text, fontSize: 15, fontWeight: '700', maxWidth: 120, textAlign: 'center' },
   manage: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 22, borderWidth: 1, borderColor: colors.textDim, paddingHorizontal: 18, paddingVertical: 10 },

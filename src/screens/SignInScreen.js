@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
 import { useAuth } from '../context/AuthContext';
+import LoadingScreen from '../components/LoadingScreen';
 
 // Shown until the person signs in (App.js). Google, or email + password, and "Forgot password?":
 // a 6-digit code by email, then the code and a new password.
@@ -61,24 +62,9 @@ export default function SignInScreen() {
     reset: `Type the code sent to ${email.trim()} and choose a new password.`,
   }[mode];
 
-  // Signing in with Google (or finishing it after coming back): no form, straight on to the app.
-  if (googleBusy) {
-    return (
-      <LinearGradient colors={['#123528', colors.bg]} locations={[0, 0.55]} style={{ flex: 1 }}>
-        <SafeAreaView style={[styles.body, { flex: 1 }]}>
-          <View style={styles.logo}>
-            <Ionicons name="musical-notes" size={36} color={colors.bg} />
-          </View>
-          <ActivityIndicator color={colors.accent} size="large" style={{ marginTop: 8 }} />
-          <Text style={styles.h1}>Signing you in…</Text>
-          <Text style={styles.sub}>Finish with Google, and VibeRoom opens by itself.</Text>
-          <Pressable onPress={cancelGoogle} hitSlop={8} style={styles.switch} accessibilityRole="button">
-            <Text style={styles.switchText}><Text style={styles.linkStrong}>Cancel</Text></Text>
-          </Pressable>
-        </SafeAreaView>
-      </LinearGradient>
-    );
-  }
+  // Signing in with Google (or finishing it after coming back): the same plain loading screen as
+  // the profiles loading after it, so nothing that looks like the login page shows in between.
+  if (googleBusy) return <LoadingScreen message="Signing you in…" onCancel={cancelGoogle} />;
 
   return (
     <LinearGradient colors={['#123528', colors.bg]} locations={[0, 0.55]} style={{ flex: 1 }}>
