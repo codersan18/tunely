@@ -145,3 +145,4 @@ export async function pendingGoogleReturn() {
 /** Web only: the callback page opened in a phone's browser tab. */
 export const forwardToApp = () => false;
 export const appReturnUrl = () => null;
+export const isGoogleReturn = () => false;

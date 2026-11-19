@@ -17,7 +17,8 @@ import OpeningScreen from './src/components/OpeningScreen';
 import WebFrame from './src/components/WebFrame';
 import registerServiceWorker from './src/utils/serviceWorker';
 import { checkForNewVersion } from './src/utils/newVersion';
-import { appReturnUrl } from './src/utils/googleSignIn';
+import { appReturnUrl, isGoogleReturn } from './src/utils/googleSignIn';
+import LoadingScreen from './src/components/LoadingScreen';
 import { colors } from './src/theme';
 
 registerServiceWorker(); // web only; does nothing on the phone
@@ -37,7 +38,7 @@ function Gate() {
       </View>
     );
   }
-  if (status === 'loading') return <View style={styles.blank} />;
+  if (status === 'loading') return <LoadingScreen />;
   if (status !== 'signed-in') return <SignInScreen />;
   return (
     <ProfilesProvider key={user?.id || 'me'}>
@@ -50,7 +51,8 @@ function Gate() {
 // below is keyed by the profile, so switching profiles starts its own library, stats and queue.
 function ProfileGate() {
   const { user } = useAuth();
-  const { profile } = useProfiles();
+  const { profile, autoPicking } = useProfiles();
+  if (!profile && autoPicking) return <LoadingScreen />; // one profile: going straight in
   if (!profile) return <ProfilePickerScreen />;
   return (
     // Library (likes, playlists, downloads) wraps the player, because the
@@ -71,8 +73,8 @@ function ProfileGate() {
 }
 
 export default function App() {
-  // No opening animation on the page that hands a phone's Google sign-in back to the app.
-  const [opening, setOpening] = useState(() => !appReturnUrl());
+  // No opening animation on the pages that come back from Google: signing in carries straight on.
+  const [opening, setOpening] = useState(() => !appReturnUrl() && !isGoogleReturn());
   // Once the opening screen is gone, see whether a newer APK has been released.
   useEffect(() => { if (!opening) checkForNewVersion(); }, [opening]);
   return (
@@ -90,7 +92,6 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  blank: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: 32 },
   msg: { color: colors.text, fontSize: 16, textAlign: 'center', lineHeight: 22 },
   open: { marginTop: 24, backgroundColor: colors.accent, borderRadius: 26, paddingVertical: 14, paddingHorizontal: 36 },

@@ -99,6 +99,8 @@ export function ProfilesProvider({ children }) {
   const value = useMemo(() => ({
     profiles,
     profile: profiles?.find((p) => p.id === activeId) || null,
+    // Not chosen yet but about to be (one profile): show the loading screen, not the picker.
+    autoPicking: !activeId && !switching && (!profiles || profiles.length === 1),
     lastId,
     select,
     switchProfile: () => { setSwitching(true); setActiveId(null); },
@@ -107,7 +109,7 @@ export function ProfilesProvider({ children }) {
     refresh,
     // The library sync found this profile deleted on another device.
     gone: () => { refresh().catch(() => {}); setActiveId(null); },
-  }), [profiles, activeId, lastId, select, saveProfile, deleteProfile, refresh]);
+  }), [profiles, activeId, lastId, switching, select, saveProfile, deleteProfile, refresh]);
 
   return <ProfilesContext.Provider value={value}>{children}</ProfilesContext.Provider>;
 }

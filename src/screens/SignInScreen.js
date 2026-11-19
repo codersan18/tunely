@@ -64,7 +64,7 @@ export default function SignInScreen() {
 
   // Signing in with Google (or finishing it after coming back): the same plain loading screen as
   // the profiles loading after it, so nothing that looks like the login page shows in between.
-  if (googleBusy) return <LoadingScreen message="Signing you in…" onCancel={cancelGoogle} />;
+  if (googleBusy) return <LoadingScreen message="Signing you in…" onCancel={Platform.OS === 'web' ? null : cancelGoogle} />;
 
   return (
     <LinearGradient colors={['#123528', colors.bg]} locations={[0, 0.55]} style={{ flex: 1 }}>

@@ -102,10 +102,10 @@ export function AuthProvider({ children }) {
         setStatus('signed-in');
         return;
       }
-      setStatus('signed-out');
-      setBusy(true);
       const link = await Linking.getInitialURL().catch(() => null);
       if (typeof link === 'string' && /auth\/callback|app-return\.html/.test(link)) setGoogleBusy(true);
+      setStatus('signed-out'); // after: a Google return shows the loading screen, never the form first
+      setBusy(true);
       let ok = false;
       try {
         const back = await pendingGoogleReturn();

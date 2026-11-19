@@ -25,6 +25,10 @@ const clearUrl = () => { try { window.history.replaceState(null, '', '/'); } cat
 
 /** Phone only. */
 export const resumeGoogle = async () => null;
+
+/** This page load is the website coming back from Google (not the phone app's hand-off). */
+export const isGoogleReturn = () => isCallback() && !!verifierFrom(window.location.href)
+  && new URLSearchParams(window.location.search).get('app') !== '1';
 export const cancelGoogle = () => {};
 
 /** Back from Google on the website: { session, user }, or null when this isn't the return page. */
