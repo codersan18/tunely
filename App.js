@@ -8,6 +8,8 @@ import { CatalogProvider } from './src/context/CatalogContext';
 import { LocalMusicProvider } from './src/context/LocalMusicContext';
 import { SettingsProvider } from './src/context/SettingsContext';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { ProfilesProvider, useProfiles } from './src/context/ProfilesContext';
+import ProfilePickerScreen from './src/screens/ProfilePickerScreen';
 import AppNavigator from './src/navigation/AppNavigator';
 import SignInScreen from './src/screens/SignInScreen';
 import LibrarySync from './src/components/LibrarySync';
@@ -38,9 +40,22 @@ function Gate() {
   if (status === 'loading') return <View style={styles.blank} />;
   if (status !== 'signed-in') return <SignInScreen />;
   return (
+    <ProfilesProvider key={user?.id || 'me'}>
+      <ProfileGate />
+    </ProfilesProvider>
+  );
+}
+
+// Like Netflix: "Who's listening?" first when the account has more than one profile. Everything
+// below is keyed by the profile, so switching profiles starts its own library, stats and queue.
+function ProfileGate() {
+  const { user } = useAuth();
+  const { profile } = useProfiles();
+  if (!profile) return <ProfilePickerScreen />;
+  return (
     // Library (likes, playlists, downloads) wraps the player, because the
     // player asks the library whether a song is saved offline.
-    <LibraryProvider key={user?.id || 'me'}>
+    <LibraryProvider key={`${user?.id || 'me'}:${profile.id}`}>
       <LibrarySync />
       <CatalogProvider>
         <LocalMusicProvider>

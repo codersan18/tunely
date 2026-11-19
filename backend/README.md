@@ -122,7 +122,22 @@ CREATE TABLE google_handoff (
 );
 ```
 
-`POST /me/profile` saves the nickname set in the app's Profile tab (Home greets with it: "Good morning, <nickname>"). Sign-in and session replies include it as `user.nickname`, so other devices pick it up when they next check the session.
+Profiles, like Netflix: an account has up to 6 (`/me/profiles`, `/me/profiles/save`, `/me/profiles/delete`), each with a name, a picture (an id from the app's `src/utils/avatars.js`, or `google` for the Google photo) and its own library: `user_library` rows are per `(user_id, profile_id)`. The first profile, `main`, holds the library from before profiles; it's created on first use (named after the nickname, else the first name) and can't be deleted. Apps that don't send `profileId` sync `main`.
+
+```sql
+CREATE TABLE account_profiles (
+  user_id text NOT NULL,
+  id text NOT NULL,                   -- 'main' or 'p-<random>'
+  name text NOT NULL,                 -- up to 20 characters; Home greets with it
+  avatar text NOT NULL DEFAULT 'headphones',
+  position integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, id)
+);
+ALTER TABLE user_library ADD COLUMN profile_id text NOT NULL DEFAULT 'main';  -- primary key (user_id, profile_id)
+```
+
+`POST /me/profile` (the nickname, before profiles) is kept for older app versions. Sign-in and session replies include it as `user.nickname`.
 
 ```sql
 CREATE TABLE user_profile (

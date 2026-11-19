@@ -10,6 +10,7 @@ import { useLocalMusic } from './LocalMusicContext';
 import { pickSimilar } from '../utils/smartShuffle';
 import { isLocalCover, lockScreenCover } from '../utils/localCover';
 import { addListen } from '../utils/stats';
+import { scoped } from '../utils/profileScope';
 import { getDeviceId } from '../utils/device';
 import { reportPlay } from '../api/catalog';
 import { PLAYLIST_OPTIONS, applyEq, applyDataSaver, onPlayerStatus } from '../utils/playerExtras';
@@ -22,7 +23,7 @@ const nextRepeat = { off: 'all', all: 'one', one: 'off' };
 const nextShuffle = { off: 'on', on: 'smart', smart: 'off' };
 const SKIP_SECONDS = 30;     // leaving a song before this counts as "not this one" for smart shuffle
 const MAX_NATIVE_ITEMS = 60; // start a fresh native playlist after this many songs
-const RESUME_KEY = 'tunely:player:v1'; // queue, song and position, to carry on after a restart
+const RESUME_BASE = 'tunely:player:v1'; // queue, song and position, to carry on after a restart (per profile)
 const SLEEP_FADE_MS = 30000;         // the sleep timer fades the music out over its last 30 s
 const PLAY_SECONDS = 30;             // listening this long (or half a short song) counts as a play
 
@@ -269,7 +270,7 @@ export function PlayerProvider({ children }) {
     if (i < 0 || !q.length) return;
     const from = Math.max(0, i - 100);
     const strip = ({ qid, ...t }) => t;
-    AsyncStorage.setItem(RESUME_KEY, JSON.stringify({
+    AsyncStorage.setItem(scoped(RESUME_BASE), JSON.stringify({
       queue: q.slice(from, i + 200).map(strip),
       index: i - from,
       position: playlist.currentTime || 0,
@@ -281,7 +282,7 @@ export function PlayerProvider({ children }) {
 
   useEffect(() => {
     let cancelled = false;
-    AsyncStorage.getItem(RESUME_KEY).then((raw) => {
+    AsyncStorage.getItem(scoped(RESUME_BASE)).then((raw) => {
       if (cancelled || !raw || queueRef.current.length) return; // something is already playing
       const s = JSON.parse(raw);
       if (!s?.queue?.length) return;

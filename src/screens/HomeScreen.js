@@ -9,8 +9,8 @@ import { useLibrary } from '../context/LibraryContext';
 import { useCatalog } from '../context/CatalogContext';
 import TrackRow from '../components/TrackRow';
 import Cover from '../components/Cover';
-import { useAuth } from '../context/AuthContext';
-import { greeting, greetingName } from '../utils/greeting';
+import { useProfiles } from '../context/ProfilesContext';
+import { greeting } from '../utils/greeting';
 
 
 function Carousel({ title, data, renderItem, keyExtractor }) {
@@ -35,7 +35,7 @@ export default function HomeScreen({ navigation }) {
   const { recent, liked, downloadedTracks, playlists } = useLibrary();
   const { songs, artists, albums, popular, status, refreshing, refresh } = useCatalog();
   const top = popular.slice(0, 15);
-  const name = greetingName(useAuth().user);
+  const name = useProfiles().profile?.name || '';
   const open = (playlistId) => navigation.navigate('Playlist', { playlistId });
 
   // Quick-access tiles: the user's own collections.
@@ -63,7 +63,7 @@ export default function HomeScreen({ navigation }) {
     <View>
       <View style={styles.header}>
         <Text style={styles.h1} numberOfLines={2}>
-          {greeting()}{name ? ', ' : ''}{!!name && <Text style={styles.name}>{name}</Text>}
+          {greeting()}{name ? ' ' : ''}{!!name && <Text style={styles.name}>{name}</Text>}
         </Text>
       </View>
 

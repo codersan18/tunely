@@ -6,10 +6,13 @@
 //   meta:   { [id]: { t: title, a: artist, w: artwork, l: local } }   (latest details of each song)
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { scoped, getProfileScope, removeAllScopes } from './profileScope';
 
+// Per profile (utils/profileScope.js).
 const KEY = 'tunely:stats:v1';
 const REMOTE_KEY = 'tunely:stats:remote:v1';
 let data = null;
+let loadedFor = null; // the profile whose stats are loaded
 let remote = { months: {}, meta: {} };
 let loading = null;
 let saveTimer = null;
@@ -18,9 +21,16 @@ const listeners = new Set();
 const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
 function load() {
+  if (loadedFor !== getProfileScope()) { // another profile: start over
+    clearTimeout(saveTimer);
+    data = null;
+    remote = { months: {}, meta: {} };
+    loading = null;
+    loadedFor = getProfileScope();
+  }
   if (data) return Promise.resolve(data);
   if (!loading) {
-    loading = AsyncStorage.multiGet([KEY, REMOTE_KEY])
+    loading = AsyncStorage.multiGet([scoped(KEY), scoped(REMOTE_KEY)])
       .then(([[, raw], [, rawRemote]]) => {
         data = raw ? JSON.parse(raw) : { months: {}, meta: {} };
         if (rawRemote) remote = JSON.parse(rawRemote);
@@ -33,7 +43,9 @@ function load() {
 
 function save() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => { AsyncStorage.setItem(KEY, JSON.stringify(data)).catch(() => {}); }, 3000);
+  const key = scoped(KEY);
+  const snapshot = data;
+  saveTimer = setTimeout(() => { AsyncStorage.setItem(key, JSON.stringify(snapshot)).catch(() => {}); }, 3000);
   listeners.forEach((fn) => fn());
 }
 
@@ -60,17 +72,19 @@ export async function exportStats() {
 export async function setRemoteStats(others) {
   await load();
   remote = { months: others?.months || {}, meta: others?.meta || {} };
-  AsyncStorage.setItem(REMOTE_KEY, JSON.stringify(remote)).catch(() => {});
+  AsyncStorage.setItem(scoped(REMOTE_KEY), JSON.stringify(remote)).catch(() => {});
   listeners.forEach((fn) => fn());
 }
 
-/** Forget everything (signing out). */
-export async function clearStats() {
+/** Forget everything, for every profile (signing out); or one profile's (it was deleted). */
+export async function clearStats(onlyProfile = null) {
   clearTimeout(saveTimer);
-  data = { months: {}, meta: {} };
-  remote = { months: {}, meta: {} };
-  loading = Promise.resolve(data);
-  await AsyncStorage.multiRemove([KEY, REMOTE_KEY]).catch(() => {});
+  if (!onlyProfile || onlyProfile === loadedFor) {
+    data = { months: {}, meta: {} };
+    remote = { months: {}, meta: {} };
+    loading = Promise.resolve(data);
+  }
+  await removeAllScopes([KEY, REMOTE_KEY], onlyProfile);
   listeners.forEach((fn) => fn());
 }
 

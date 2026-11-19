@@ -46,4 +46,7 @@ export const signOutSession = (session) => post('/auth/sign-out', { session }).c
 export const requestPasswordReset = (email) => post('/auth/forgot', { email });
 export const resetPasswordWithCode = (email, code, password) => post('/auth/reset', { email, code, password });
 export const syncLibrary = (session, body) => post('/me/library', body, { 'x-session': session });
-export const updateProfile = (session, profile) => post('/me/profile', profile, { 'x-session': session });
+// Profiles (like Netflix): up to 6 per account, each with its own library.
+export const listProfiles = (session) => post('/me/profiles', {}, { 'x-session': session });
+export const saveProfile = (session, profile) => post('/me/profiles/save', profile, { 'x-session': session });
+export const deleteProfile = (session, id) => post('/me/profiles/delete', { id }, { 'x-session': session });

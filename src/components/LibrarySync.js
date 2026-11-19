@@ -6,6 +6,8 @@ import { syncLibrary } from '../api/auth';
 import { exportStats, setRemoteStats } from '../utils/stats';
 import { getDeviceId } from '../utils/device';
 import { diag } from '../utils/diag';
+import { getProfileScope } from '../utils/profileScope';
+import { useProfiles } from '../context/ProfilesContext';
 
 const AFTER_CHANGE_MS = 3000;
 const EVERY_MS = 3 * 60 * 1000;
@@ -15,6 +17,7 @@ const EVERY_MS = 3 * 60 * 1000;
 // back the result, which replaces the library here (downloads and this device's own songs stay).
 export default function LibrarySync() {
   const { session, expired } = useAuth();
+  const { gone } = useProfiles();
   const { ready, syncState, applySync } = useLibrary();
   const stateRef = useRef(syncState); stateRef.current = syncState;
   const lastSynced = useRef(null); // the library as of the last sync, to skip syncing nothing new
@@ -26,7 +29,7 @@ export default function LibrarySync() {
     if (running.current) { again.current = true; return; }
     running.current = true;
     try {
-      const body = { deviceId: await getDeviceId(), ...stateRef.current, stats: await exportStats() };
+      const body = { deviceId: await getDeviceId(), profileId: getProfileScope(), ...stateRef.current, stats: await exportStats() };
       const merged = await syncLibrary(session, body);
       applySync(merged);
       setRemoteStats(merged.statsOthers);
@@ -34,12 +37,13 @@ export default function LibrarySync() {
     } catch (e) {
       diag('sync failed', `${e.status} ${e.code} ${e.message}`);
       if (e.status === 401) expired('sync 401'); // signed out elsewhere
+      if (e.status === 404 && e.code === 'no_profile') gone(); // this profile was deleted on another device
       // offline: try again later
     } finally {
       running.current = false;
       if (again.current) { again.current = false; setTimeout(sync, 500); }
     }
-  }, [session, ready, applySync, expired]);
+  }, [session, ready, applySync, expired, gone]);
 
   // On start, then regularly, and when the app comes back or goes to the background.
   useEffect(() => {

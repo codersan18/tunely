@@ -17,7 +17,11 @@
 //   POST   /auth/forgot           -> { email }: emails a 6-digit code (same answer whether or not the account exists)
 //   POST   /auth/reset            -> { email, code, password } -> new password, then { session, user }
 //   POST   /me/library            -> sync likes, playlists, recently played and stats (see mergeLibrary)
-//   POST   /me/profile            -> { nickname } -> { user } (the greeting's name; "" clears it)
+//   POST   /me/profile            -> { nickname } -> { user } (apps from before profiles)
+//   POST   /me/profiles           -> { profiles: [{ id, name, avatar, main }] } (up to 6; "main" made on first use)
+//   POST   /me/profiles/save      -> { id?, name, avatar } -> { profiles } (no id = new profile)
+//   POST   /me/profiles/delete    -> { id } -> { profiles } (also deletes that profile's library)
+//   /me/library takes { profileId } (default "main"): each profile syncs its own library
 // Admin (header "x-admin-key: <ADMIN_KEY>"):
 //   POST   /admin/verify          -> 200 if the key is right
 //   POST   /admin/prepare         -> duplicate check + short-lived upload URLs
@@ -825,6 +829,62 @@ function otherStats(devices, deviceId) {
   return { months, meta };
 }
 
+// ---------- profiles (like Netflix: up to 6 per account, each with its own library) ----------
+// The first profile is "main": it holds the account's library from before profiles. It's created
+// on first use, named after the nickname or first name, and can't be deleted.
+const MAIN_PROFILE = 'main';
+const MAX_PROFILES = 6;
+const PROFILE_NAME_MAX = 20;
+const AVATAR_ID = /^[a-z0-9-]{1,20}$/;
+
+async function listProfiles(user) {
+  let rows = await sql('SELECT id, name, avatar FROM account_profiles WHERE user_id = $1 ORDER BY position, created_at', [user.id]);
+  if (!rows.some((r) => r.id === MAIN_PROFILE)) {
+    const [nick] = await sql('SELECT nickname FROM user_profile WHERE user_id = $1', [user.id]).catch(() => []);
+    const name = (nick?.nickname || (user.name || '').trim().split(/\s+/)[0] || 'Me').slice(0, PROFILE_NAME_MAX);
+    await sql(`INSERT INTO account_profiles (user_id, id, name, avatar, position) VALUES ($1, $2, $3, $4, 0)
+               ON CONFLICT (user_id, id) DO NOTHING`, [user.id, MAIN_PROFILE, name, user.image ? 'google' : 'headphones']);
+    rows = await sql('SELECT id, name, avatar FROM account_profiles WHERE user_id = $1 ORDER BY position, created_at', [user.id]);
+  }
+  return rows.map((r) => ({ id: r.id, name: r.name, avatar: r.avatar, main: r.id === MAIN_PROFILE }));
+}
+
+const profilesReply = async (user) => json(200, { profiles: await listProfiles(user) });
+
+function profileFields(body) {
+  const name = typeof body.name === 'string' ? body.name.replace(/[\u0000-\u001f\u007f]/g, '').trim().replace(/\s+/g, ' ') : '';
+  if (!name) return { error: json(400, { error: 'missing', message: 'Give the profile a name.' }) };
+  if ([...name].length > PROFILE_NAME_MAX) return { error: json(400, { error: 'too_long', message: `Keep the name to ${PROFILE_NAME_MAX} characters.` }) };
+  const avatar = typeof body.avatar === 'string' && AVATAR_ID.test(body.avatar) ? body.avatar : 'headphones';
+  return { name, avatar };
+}
+
+// Create (no id) or change a profile's name and avatar.
+async function saveProfile(body, user) {
+  const f = profileFields(body);
+  if (f.error) return f.error;
+  const existing = await listProfiles(user);
+  const id = clean(body.id, 40);
+  if (id) {
+    if (!existing.some((p) => p.id === id)) return json(404, { error: 'no_profile', message: 'This profile was deleted.' });
+    await sql('UPDATE account_profiles SET name = $3, avatar = $4 WHERE user_id = $1 AND id = $2', [user.id, id, f.name, f.avatar]);
+  } else {
+    if (existing.length >= MAX_PROFILES) return json(400, { error: 'too_many', message: `An account can have up to ${MAX_PROFILES} profiles.` });
+    await sql(`INSERT INTO account_profiles (user_id, id, name, avatar, position) VALUES ($1, $2, $3, $4,
+               (SELECT COALESCE(MAX(position), 0) + 1 FROM account_profiles WHERE user_id = $1))`,
+    [user.id, `p-${randomUUID().slice(0, 8)}`, f.name, f.avatar]);
+  }
+  return profilesReply(user);
+}
+
+async function deleteProfile(body, user) {
+  const id = clean(body.id, 40);
+  if (id === MAIN_PROFILE) return json(400, { error: 'main_profile', message: 'The main profile can\'t be deleted.' });
+  await sql('DELETE FROM account_profiles WHERE user_id = $1 AND id = $2', [user.id, id]);
+  await sql('DELETE FROM user_library WHERE user_id = $1 AND profile_id = $2', [user.id, id]);
+  return profilesReply(user);
+}
+
 const libraryReply = (doc, deviceId) => json(200, {
   liked: doc.liked || [], playlists: doc.playlists || [], recent: doc.recent || [], removed: doc.removed || { likes: {}, playlists: {} },
   statsOthers: otherStats(doc.stats?.devices, deviceId),
@@ -836,15 +896,21 @@ async function syncLibrary(request, user) {
   let body;
   try { body = JSON.parse(text); } catch (e) { return json(400, { error: 'bad_json' }); }
   const deviceId = clean(body.deviceId, 60);
+  // Each profile has its own library; apps from before profiles sync the main one.
+  const profileId = clean(body.profileId, 40) || MAIN_PROFILE;
+  if (profileId !== MAIN_PROFILE) {
+    const found = await sql('SELECT 1 FROM account_profiles WHERE user_id = $1 AND id = $2', [user.id, profileId]);
+    if (!found.length) return json(404, { error: 'no_profile', message: 'This profile was deleted.' });
+  }
   // Two devices can sync at the same moment: save only if nobody saved in between, else merge again.
   for (let attempt = 0; attempt < 5; attempt++) {
-    const [cur] = await sql('SELECT doc, version FROM user_library WHERE user_id = $1', [user.id]);
+    const [cur] = await sql('SELECT doc, version FROM user_library WHERE user_id = $1 AND profile_id = $2', [user.id, profileId]);
     const merged = mergeLibrary(cur?.doc || {}, obj(body), deviceId);
     const saved = cur
-      ? await sql(`UPDATE user_library SET doc = $2::jsonb, version = version + 1, updated_at = now()
-                   WHERE user_id = $1 AND version = $3 RETURNING version`, [user.id, JSON.stringify(merged), cur.version])
-      : await sql(`INSERT INTO user_library (user_id, doc, version) VALUES ($1, $2::jsonb, 1)
-                   ON CONFLICT (user_id) DO NOTHING RETURNING version`, [user.id, JSON.stringify(merged)]);
+      ? await sql(`UPDATE user_library SET doc = $3::jsonb, version = version + 1, updated_at = now()
+                   WHERE user_id = $1 AND profile_id = $2 AND version = $4 RETURNING version`, [user.id, profileId, JSON.stringify(merged), cur.version])
+      : await sql(`INSERT INTO user_library (user_id, profile_id, doc, version) VALUES ($1, $2, $3::jsonb, 1)
+                   ON CONFLICT (user_id, profile_id) DO NOTHING RETURNING version`, [user.id, profileId, JSON.stringify(merged)]);
     if (saved.length) return libraryReply(merged, deviceId);
   }
   return json(409, { error: 'busy', message: 'Sync is busy. It will try again.' });
@@ -897,6 +963,15 @@ async function route(request) {
         const user = await userForSession(request.headers.get('x-session'), clientIp(request));
         if (!user) return json(401, { error: 'signed_out', message: 'Please sign in again.' });
         return await syncLibrary(request, user);
+      }
+
+      if (path.startsWith('/me/profiles') && request.method === 'POST') {
+        const user = await userForSession(request.headers.get('x-session'), clientIp(request));
+        if (!user) return json(401, { error: 'signed_out', message: 'Please sign in again.' });
+        const b = obj(await request.json().catch(() => ({})));
+        if (path === '/me/profiles') return await profilesReply(user);
+        if (path === '/me/profiles/save') return await saveProfile(b, user);
+        if (path === '/me/profiles/delete') return await deleteProfile(b, user);
       }
 
       if (path === '/me/profile' && request.method === 'POST') {

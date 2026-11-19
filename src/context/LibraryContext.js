@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { saveSong, restore, removeSaved, deleteLocal } from '../utils/offline';
+import { scoped, removeAllScopes } from '../utils/profileScope';
 
 // Everything the user owns: liked songs, their playlists and offline downloads.
 // Saved to the phone with AsyncStorage so it survives app restarts, and synced with the account
@@ -8,23 +9,38 @@ import { saveSong, restore, removeSaved, deleteLocal } from '../utils/offline';
 // `updatedAt`) and deletions are remembered in `removed`, so the newest change wins on every
 // device. Downloads, and songs that are files on this device, stay on this device.
 // Offline song files are handled by utils/offline.js (phone) / offline.web.js (browser).
+// Each profile (context/ProfilesContext.js) has its own library on the device (utils/profileScope.js);
+// downloads are files on this device, so they're shared by every profile.
 
-const STORAGE_KEY = 'tunely:library:v2';
+const STORAGE_KEY = 'tunely:library:v2'; // per profile
+const DOWNLOADS_KEY = 'tunely:downloads:v1'; // this device's downloads, for every profile
 const OLD_STORAGE_KEY = 'tunely:library:v1';
 const NO_REMOVED = { likes: {}, playlists: {} };
 const isDeviceOnly = (t) => !!t?.local; // songs on this phone / computer and saved edits
 
-/** Signing out: forget the account's library on this device (downloads stay). */
-export async function clearLibraryForSignOut() {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    const saved = raw ? JSON.parse(raw) : {};
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ downloads: saved.downloads || {} }));
-  } catch (e) { /* nothing saved */ }
+// Downloads used to be saved inside the (main profile's) library: move them to their own key once.
+async function loadDownloads() {
+  const raw = await AsyncStorage.getItem(DOWNLOADS_KEY);
+  if (raw) return JSON.parse(raw);
+  const main = await AsyncStorage.getItem(STORAGE_KEY);
+  const found = (main && JSON.parse(main).downloads) || {};
+  await AsyncStorage.setItem(DOWNLOADS_KEY, JSON.stringify(found));
+  return found;
 }
+
+/** Signing out: forget every profile's library on this device (downloads stay). */
+export async function clearLibraryForSignOut() {
+  try { await loadDownloads(); } catch (e) { /* nothing saved */ }
+  await removeAllScopes([STORAGE_KEY]);
+}
+
+/** A profile was deleted: forget its library on this device. */
+export const clearProfileLibrary = (profileId) => removeAllScopes([STORAGE_KEY], profileId);
 const LibraryContext = createContext(null);
 
 export function LibraryProvider({ children }) {
+  // This provider is remounted for each profile (App.js), so the key is fixed for its lifetime.
+  const storageKey = useMemo(() => scoped(STORAGE_KEY), []);
   const [ready, setReady] = useState(false);
   const [liked, setLiked] = useState([]);          // [track]
   const [playlists, setPlaylists] = useState([]);  // [{ id, title, createdAt, tracks: [track] }]
@@ -51,34 +67,38 @@ export function LibraryProvider({ children }) {
       } catch (e) { /* ignore */ }
 
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        const raw = await AsyncStorage.getItem(storageKey);
         if (raw) {
           const saved = JSON.parse(raw);
           setLiked(saved.liked || []);
           setPlaylists(saved.playlists || []);
           setRecent(saved.recent || []);
           setRemoved(saved.removed || NO_REMOVED);
-          // Drop download entries whose file has gone missing.
-          const ok = {};
-          await Promise.all(Object.entries(saved.downloads || {}).map(async ([id, d]) => {
-            const entry = await restore(d);
-            if (entry) ok[id] = entry;
-          }));
-          setDownloads(ok);
         }
+        // Drop download entries whose file has gone missing.
+        const ok = {};
+        await Promise.all(Object.entries(await loadDownloads()).map(async ([id, d]) => {
+          const entry = await restore(d);
+          if (entry) ok[id] = entry;
+        }));
+        setDownloads(ok);
       } catch (e) {
         console.warn('Could not load library', e);
       } finally {
         setReady(true);
       }
     })();
-  }, []);
+  }, [storageKey]);
 
   // ---- save whenever something changes (after the first load) ----
   useEffect(() => {
     if (!ready) return;
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ liked, playlists, downloads, recent, removed })).catch(() => {});
-  }, [ready, liked, playlists, downloads, recent, removed]);
+    AsyncStorage.setItem(storageKey, JSON.stringify({ liked, playlists, recent, removed })).catch(() => {});
+  }, [ready, storageKey, liked, playlists, recent, removed]);
+  useEffect(() => {
+    if (!ready) return;
+    AsyncStorage.setItem(DOWNLOADS_KEY, JSON.stringify(downloads)).catch(() => {});
+  }, [ready, downloads]);
 
 
   // ---- recently played ----
