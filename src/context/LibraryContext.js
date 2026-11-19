@@ -3,11 +3,25 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { saveSong, restore, removeSaved, deleteLocal } from '../utils/offline';
 
 // Everything the user owns: liked songs, their playlists and offline downloads.
-// Saved to the phone with AsyncStorage so it survives app restarts.
+// Saved to the phone with AsyncStorage so it survives app restarts, and synced with the account
+// (components/LibrarySync.js): likes, playlists and recently played carry a time (`at` /
+// `updatedAt`) and deletions are remembered in `removed`, so the newest change wins on every
+// device. Downloads, and songs that are files on this device, stay on this device.
 // Offline song files are handled by utils/offline.js (phone) / offline.web.js (browser).
 
 const STORAGE_KEY = 'tunely:library:v2';
 const OLD_STORAGE_KEY = 'tunely:library:v1';
+const NO_REMOVED = { likes: {}, playlists: {} };
+const isDeviceOnly = (t) => !!t?.local; // songs on this phone / computer and saved edits
+
+/** Signing out: forget the account's library on this device (downloads stay). */
+export async function clearLibraryForSignOut() {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    const saved = raw ? JSON.parse(raw) : {};
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ downloads: saved.downloads || {} }));
+  } catch (e) { /* nothing saved */ }
+}
 const LibraryContext = createContext(null);
 
 export function LibraryProvider({ children }) {
@@ -17,6 +31,7 @@ export function LibraryProvider({ children }) {
   const [downloads, setDownloads] = useState({});  // { [trackId]: { track, uri, size } }
   const [downloading, setDownloading] = useState({}); // { [trackId]: true }
   const [recent, setRecent] = useState([]);        // [track], most recent first
+  const [removed, setRemoved] = useState(NO_REMOVED); // { likes: { id: time }, playlists: { id: time } }
 
   // ---- load once on startup ----
   useEffect(() => {
@@ -42,6 +57,7 @@ export function LibraryProvider({ children }) {
           setLiked(saved.liked || []);
           setPlaylists(saved.playlists || []);
           setRecent(saved.recent || []);
+          setRemoved(saved.removed || NO_REMOVED);
           // Drop download entries whose file has gone missing.
           const ok = {};
           await Promise.all(Object.entries(saved.downloads || {}).map(async ([id, d]) => {
@@ -61,23 +77,29 @@ export function LibraryProvider({ children }) {
   // ---- save whenever something changes (after the first load) ----
   useEffect(() => {
     if (!ready) return;
-    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ liked, playlists, downloads, recent })).catch(() => {});
-  }, [ready, liked, playlists, downloads, recent]);
+    AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ liked, playlists, downloads, recent, removed })).catch(() => {});
+  }, [ready, liked, playlists, downloads, recent, removed]);
 
 
   // ---- recently played ----
   const addRecent = useCallback((track) => {
     const { qid, ...clean } = track; // queue key isn't part of the song
-    setRecent((prev) => [clean, ...prev.filter((t) => t.id !== track.id)].slice(0, 30));
+    setRecent((prev) => [{ ...clean, at: Date.now() }, ...prev.filter((t) => t.id !== track.id)].slice(0, 30));
   }, []);
 
   // ---- liked songs ----
   const likedIds = useMemo(() => new Set(liked.map((t) => t.id)), [liked]);
   const isLiked = useCallback((id) => likedIds.has(id), [likedIds]);
   const toggleLike = useCallback((track) => {
-    setLiked((prev) => (prev.some((t) => t.id === track.id)
-      ? prev.filter((t) => t.id !== track.id)
-      : [track, ...prev]));
+    const { qid, ...clean } = track;
+    const now = Date.now();
+    setLiked((prev) => {
+      if (prev.some((t) => t.id === track.id)) {
+        setRemoved((r) => ({ ...r, likes: { ...r.likes, [track.id]: now } }));
+        return prev.filter((t) => t.id !== track.id);
+      }
+      return [{ ...clean, at: now }, ...prev];
+    });
   }, []);
 
   // ---- playlists ----
@@ -86,6 +108,7 @@ export function LibraryProvider({ children }) {
       id: `u-${Date.now()}`,
       title: title.trim() || `My Playlist #${Date.now() % 1000}`,
       createdAt: Date.now(),
+      updatedAt: Date.now(),
       tracks: firstTrack ? [firstTrack] : [],
     };
     setPlaylists((prev) => [playlist, ...prev]);
@@ -94,21 +117,22 @@ export function LibraryProvider({ children }) {
 
   const deletePlaylist = useCallback((id) => {
     setPlaylists((prev) => prev.filter((p) => p.id !== id));
+    setRemoved((r) => ({ ...r, playlists: { ...r.playlists, [id]: Date.now() } }));
   }, []);
 
   const renamePlaylist = useCallback((id, title) => {
-    setPlaylists((prev) => prev.map((p) => (p.id === id ? { ...p, title } : p)));
+    setPlaylists((prev) => prev.map((p) => (p.id === id ? { ...p, title, updatedAt: Date.now() } : p)));
   }, []);
 
   const addToPlaylist = useCallback((playlistId, track) => {
     setPlaylists((prev) => prev.map((p) => (p.id === playlistId && !p.tracks.some((t) => t.id === track.id)
-      ? { ...p, tracks: [...p.tracks, track] }
+      ? { ...p, tracks: [...p.tracks, track], updatedAt: Date.now() }
       : p)));
   }, []);
 
   const removeFromPlaylist = useCallback((playlistId, trackId) => {
     setPlaylists((prev) => prev.map((p) => (p.id === playlistId
-      ? { ...p, tracks: p.tracks.filter((t) => t.id !== trackId) }
+      ? { ...p, tracks: p.tracks.filter((t) => t.id !== trackId), updatedAt: Date.now() }
       : p)));
   }, []);
 
@@ -162,6 +186,27 @@ export function LibraryProvider({ children }) {
     return typeof track.url === 'string' ? { uri: track.url } : track.url;
   }, []);
 
+  // ---- account sync (components/LibrarySync.js) ----
+  // What this device sends: everything except songs that only exist on this device.
+  const syncState = useMemo(() => ({
+    liked: liked.filter((t) => !isDeviceOnly(t)).map((t) => ({ ...t, at: t.at || 1 })),
+    playlists: playlists.map((p) => ({ ...p, updatedAt: p.updatedAt || p.createdAt || 1 })),
+    recent: recent.filter((t) => !isDeviceOnly(t)).map((t) => ({ ...t, at: t.at || 1 })),
+    removed,
+  }), [liked, playlists, recent, removed]);
+
+  // The merged library from the account, plus this device's own songs.
+  const applySync = useCallback((remote) => {
+    const keepLocal = (mine, theirs, gone = {}) => [...theirs, ...mine.filter((t) => isDeviceOnly(t) && !(gone[t.id] >= (t.at || 0)))]
+      .sort((a, b) => (b.at || 0) - (a.at || 0));
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const nextRemoved = remote.removed || NO_REMOVED;
+    setRemoved((cur) => (same(cur, nextRemoved) ? cur : nextRemoved));
+    setLiked((cur) => { const next = keepLocal(cur, remote.liked || [], nextRemoved.likes); return same(cur, next) ? cur : next; });
+    setPlaylists((cur) => (same(cur, remote.playlists || []) ? cur : remote.playlists || []));
+    setRecent((cur) => { const next = keepLocal(cur, remote.recent || []).slice(0, 30); return same(cur, next) ? cur : next; });
+  }, []);
+
   const downloadedTracks = useMemo(() => Object.values(downloads).map((d) => d.track), [downloads]);
   const downloadedBytes = useMemo(() => Object.values(downloads).reduce((s, d) => s + (d.size || 0), 0), [downloads]);
 
@@ -170,10 +215,10 @@ export function LibraryProvider({ children }) {
     recent, addRecent,
     liked, isLiked, toggleLike,
     playlists, createPlaylist, deletePlaylist, renamePlaylist, addToPlaylist, removeFromPlaylist,
-    downloadedTracks, downloadedBytes, isDownloaded, isDownloading, download, downloadMany, removeDownload, playableSource,
+    downloadedTracks, downloadedBytes, isDownloaded, isDownloading, download, downloadMany, removeDownload, playableSource, syncState, applySync,
   }), [ready, recent, addRecent, liked, isLiked, toggleLike, playlists, createPlaylist, deletePlaylist, renamePlaylist, addToPlaylist,
     removeFromPlaylist, downloadedTracks, downloadedBytes, isDownloaded, isDownloading, download, downloadMany,
-    removeDownload, playableSource]);
+    removeDownload, playableSource, syncState, applySync]);
 
   return <LibraryContext.Provider value={value}>{children}</LibraryContext.Provider>;
 }

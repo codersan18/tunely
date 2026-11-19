@@ -1,4 +1,6 @@
-// "Your VibeRoom": what this listener played, kept on the phone only.
+// "Your VibeRoom": what this listener played. This device's own counts are kept here and sent to
+// the account (components/LibrarySync.js); the other devices' counts come back as `remote` and are
+// added in when the stats are shown.
 // Grouped by month so it stays small however long the app is used:
 //   months: { 'YYYY-MM': { s: seconds, n: plays, songs: { [id]: [plays, seconds] } } }
 //   meta:   { [id]: { t: title, a: artist, w: artwork, l: local } }   (latest details of each song)
@@ -6,7 +8,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const KEY = 'tunely:stats:v1';
+const REMOTE_KEY = 'tunely:stats:remote:v1';
 let data = null;
+let remote = { months: {}, meta: {} };
 let loading = null;
 let saveTimer = null;
 const listeners = new Set();
@@ -16,9 +20,12 @@ const monthKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() +
 function load() {
   if (data) return Promise.resolve(data);
   if (!loading) {
-    loading = AsyncStorage.getItem(KEY)
-      .then((raw) => { data = raw ? JSON.parse(raw) : { months: {}, meta: {} }; })
-      .catch(() => { data = { months: {}, meta: {} }; })
+    loading = AsyncStorage.multiGet([KEY, REMOTE_KEY])
+      .then(([[, raw], [, rawRemote]]) => {
+        data = raw ? JSON.parse(raw) : { months: {}, meta: {} };
+        if (rawRemote) remote = JSON.parse(rawRemote);
+      })
+      .catch(() => { data = data || { months: {}, meta: {} }; })
       .then(() => data);
   }
   return loading;
@@ -43,6 +50,30 @@ export async function addListen(track, seconds, play = false) {
   save();
 }
 
+/** This device's own counts, for syncing. */
+export async function exportStats() {
+  await load();
+  return { months: data.months, meta: data.meta };
+}
+
+/** The account's other devices' counts, added together (from the sync). */
+export async function setRemoteStats(others) {
+  await load();
+  remote = { months: others?.months || {}, meta: others?.meta || {} };
+  AsyncStorage.setItem(REMOTE_KEY, JSON.stringify(remote)).catch(() => {});
+  listeners.forEach((fn) => fn());
+}
+
+/** Forget everything (signing out). */
+export async function clearStats() {
+  clearTimeout(saveTimer);
+  data = { months: {}, meta: {} };
+  remote = { months: {}, meta: {} };
+  loading = Promise.resolve(data);
+  await AsyncStorage.multiRemove([KEY, REMOTE_KEY]).catch(() => {});
+  listeners.forEach((fn) => fn());
+}
+
 export function onStatsChange(fn) {
   listeners.add(fn);
   return () => listeners.delete(fn);
@@ -52,27 +83,30 @@ export function onStatsChange(fn) {
 export async function getStats(period) {
   await load();
   const now = new Date();
-  const keys = Object.keys(data.months).filter((k) => (
+  const wanted = (k) => (
     period === 'all' ? true
       : period === 'year' ? k.startsWith(`${now.getFullYear()}-`)
         : k === monthKey(now)
-  ));
+  );
   const songs = new Map();
   let seconds = 0;
   let plays = 0;
-  for (const k of keys) {
-    const m = data.months[k];
-    seconds += m.s;
-    plays += m.n;
-    for (const [id, [p, s]] of Object.entries(m.songs)) {
-      const row = songs.get(id) || { plays: 0, seconds: 0 };
-      row.plays += p;
-      row.seconds += s;
-      songs.set(id, row);
+  for (const source of [data, remote]) { // this device + the account's other devices
+    for (const [k, m] of Object.entries(source.months || {})) {
+      if (!wanted(k)) continue;
+      seconds += m.s || 0;
+      plays += m.n || 0;
+      for (const [id, [p, s]] of Object.entries(m.songs || {})) {
+        const row = songs.get(id) || { plays: 0, seconds: 0 };
+        row.plays += p;
+        row.seconds += s;
+        songs.set(id, row);
+      }
     }
   }
+  const meta = { ...remote.meta, ...data.meta };
   const toTrack = (id) => {
-    const m = data.meta[id] || {};
+    const m = meta[id] || {};
     return { id, title: m.t || 'Unknown song', artist: m.a || 'Unknown artist', artwork: m.w || null, local: !!m.l };
   };
   const topSongs = [...songs.entries()]
@@ -82,7 +116,7 @@ export async function getStats(period) {
     .map(([id, r]) => ({ track: toTrack(id), ...r }));
   const artists = new Map();
   for (const [id, r] of songs) {
-    for (const name of (data.meta[id]?.a || 'Unknown artist').split(/\s*,\s*/)) {
+    for (const name of (meta[id]?.a || 'Unknown artist').split(/\s*,\s*/)) {
       const a = artists.get(name) || { name, plays: 0, seconds: 0 };
       a.plays += r.plays;
       a.seconds += r.seconds;

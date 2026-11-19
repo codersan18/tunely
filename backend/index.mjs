@@ -5,6 +5,14 @@
 //   POST   /plays                 -> count a play { songId, device } (once per device + song per 10 min)
 //   GET    /popular?days=&limit=  -> most played songs lately [{ id, plays }]
 //   POST   /requests              -> a listener asks for a song { device, title, artist?, note? }
+// Accounts (Neon Auth; the app keeps the returned `session` and sends it as header "x-session"):
+//   POST   /auth/sign-up          -> { email, password, name } -> { session, user }
+//   POST   /auth/sign-in          -> { email, password } -> { session, user }
+//   POST   /auth/google           -> { callbackURL } -> { url, challenge }  (open url; Google returns to callbackURL)
+//   POST   /auth/google/finish    -> { verifier, challenge } -> { session, user }
+//   POST   /auth/session          -> { session } -> { user } or 401 when signed out
+//   POST   /auth/sign-out         -> { session }
+//   POST   /me/library            -> sync likes, playlists, recently played and stats (see mergeLibrary)
 // Admin (header "x-admin-key: <ADMIN_KEY>"):
 //   POST   /admin/verify          -> 200 if the key is right
 //   POST   /admin/prepare         -> duplicate check + short-lived upload URLs
@@ -21,7 +29,7 @@
 //   POST   /admin/optimize/:id/done       -> switch the song to the compressed file, delete the original
 //
 // No dependencies: Postgres via Neon's HTTP SQL endpoint, S3 URLs signed with node:crypto.
-// Neon injects DATABASE_URL and AWS_* at runtime. ADMIN_KEY is set at deploy time.
+// Neon injects DATABASE_URL, AWS_* and NEON_AUTH_BASE_URL at runtime. ADMIN_KEY is set at deploy time.
 
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
@@ -494,10 +502,258 @@ async function startCompression() {
 // The web version of VibeRoom calls this API from a browser, which needs CORS headers.
 // Admin routes still need the admin password in the x-admin-key header (no cookies are used,
 // so allowing any origin doesn't let other sites act as the admin).
+// ---------- accounts (Neon Auth) ----------
+// The app never talks to Neon Auth itself: these endpoints do it and hand the app a session string
+// (the value of Neon Auth's session cookie). The app keeps it in secure storage and sends it as
+// "x-session". Cookies are handled here because phones and some browsers (Safari) can't keep
+// Neon Auth's cookie for the app.
+
+const AUTH_BASE = () => process.env.NEON_AUTH_BASE_URL || 'https://ep-snowy-forest-azystcn6.neonauth.c-3.ap-southeast-1.aws.neon.tech/neondb/auth';
+const AUTH_ORIGIN = 'https://viberoom.expo.app'; // a trusted domain in Neon Auth
+const SESSION_COOKIE = '__Secure-neon-auth.session_token';
+const CHALLENGE_MARKERS = ['.session_challenge', '.session_challange'];
+const CALLBACK_OK = /^(https:\/\/viberoom\.expo\.app|http:\/\/localhost(:\d+)?)\/auth\/callback(\?|$)/;
+
+function setCookies(res) {
+  const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : (res.headers.get('set-cookie') || '').split(/,(?=\s*[^;,=\s]+=)/);
+  const out = {};
+  for (const c of list) {
+    const pair = c.split(';')[0];
+    const i = pair.indexOf('=');
+    if (i < 1) continue;
+    const name = pair.slice(0, i).trim();
+    const value = pair.slice(i + 1).trim();
+    const expired = !value || /max-age=(-\d+|0)\b/i.test(c);
+    out[name] = expired ? null : value;
+  }
+  return out;
+}
+
+async function authCall(method, path, { body, cookie, query, ip } = {}) {
+  const u = new URL(AUTH_BASE() + path);
+  for (const [k, v] of Object.entries(query || {})) u.searchParams.set(k, v);
+  const headers = { origin: AUTH_ORIGIN, accept: 'application/json' };
+  if (body) headers['content-type'] = 'application/json';
+  if (cookie) headers.cookie = cookie;
+  if (ip) headers['x-forwarded-for'] = ip;
+  const res = await fetch(u, { method, headers, body: body ? JSON.stringify(body) : undefined, redirect: 'manual' });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { /* not JSON */ }
+  return { ok: res.ok, status: res.status, data, cookies: setCookies(res) };
+}
+
+const publicUser = (u) => (u ? { id: u.id, name: u.name || '', email: u.email || '', image: u.image || null } : null);
+const clientIp = (request) => (request.headers.get('x-forwarded-for') || '').split(',')[0].trim() || undefined;
+
+// Friendly messages for Neon Auth's error codes.
+const AUTH_MESSAGES = {
+  USER_ALREADY_EXISTS: 'There is already an account with this email. Sign in instead.',
+  USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL: 'There is already an account with this email. Sign in instead.',
+  INVALID_EMAIL_OR_PASSWORD: 'Wrong email or password.',
+  INVALID_EMAIL: 'That email address doesn\'t look right.',
+  PASSWORD_TOO_SHORT: 'Use a password of at least 8 characters.',
+  PASSWORD_TOO_LONG: 'That password is too long.',
+};
+function authError(r) {
+  const code = r.data?.code || (r.status === 429 ? 'TOO_MANY_REQUESTS' : 'AUTH_FAILED');
+  const message = AUTH_MESSAGES[code] || (r.status === 429 ? 'Too many tries. Wait a minute and try again.' : r.data?.message || 'Sign-in failed. Try again.');
+  return json(r.status >= 500 ? 502 : r.status === 429 ? 429 : 400, { error: code, message });
+}
+
+// The signed-in user for a session string, or null. Remembered for a few minutes per instance.
+const sessionCache = new Map(); // session -> { user, until }
+async function userForSession(session, ip) {
+  if (!session || typeof session !== 'string' || session.length > 1000) return null;
+  const hit = sessionCache.get(session);
+  if (hit && hit.until > Date.now()) return hit.user;
+  const r = await authCall('GET', '/get-session', { cookie: `${SESSION_COOKIE}=${session}`, query: { disableCookieCache: 'true' }, ip });
+  const user = r.ok && r.data?.user ? publicUser(r.data.user) : null;
+  if (sessionCache.size > 5000) sessionCache.clear();
+  if (user) sessionCache.set(session, { user, until: Date.now() + 5 * 60 * 1000 });
+  else sessionCache.delete(session);
+  return user;
+}
+
+async function signedIn(session, ip) {
+  const user = await userForSession(session, ip);
+  if (!user) return json(502, { error: 'no_session', message: 'Signed in, but the session could not be read. Try again.' });
+  return json(200, { session, user });
+}
+
+async function signUp(body, ip) {
+  const email = clean(body.email, 254).toLowerCase();
+  const password = typeof body.password === 'string' ? body.password : '';
+  const name = clean(body.name, 80) || email.split('@')[0];
+  if (!email || !password) return json(400, { error: 'missing', message: 'Enter your email and a password.' });
+  if (password.length < 8) return json(400, { error: 'PASSWORD_TOO_SHORT', message: AUTH_MESSAGES.PASSWORD_TOO_SHORT });
+  const r = await authCall('POST', '/sign-up/email', { body: { email, password, name }, ip });
+  if (!r.ok) return authError(r);
+  const session = r.cookies[SESSION_COOKIE];
+  if (!session) return json(200, { session: null, message: 'Account created. Check your email to confirm it, then sign in.' });
+  return signedIn(session, ip);
+}
+
+async function signInEmail(body, ip) {
+  const email = clean(body.email, 254).toLowerCase();
+  const password = typeof body.password === 'string' ? body.password : '';
+  if (!email || !password) return json(400, { error: 'missing', message: 'Enter your email and password.' });
+  const r = await authCall('POST', '/sign-in/email', { body: { email, password }, ip });
+  if (!r.ok) return authError(r);
+  const session = r.cookies[SESSION_COOKIE];
+  if (!session) return json(400, { error: 'not_verified', message: 'Confirm your email first (check your inbox), then sign in.' });
+  return signedIn(session, ip);
+}
+
+// Google: step 1 gives the app the page to open and a "challenge" to bring back with the code.
+async function startGoogle(body, ip) {
+  const callbackURL = typeof body.callbackURL === 'string' ? body.callbackURL : '';
+  if (!CALLBACK_OK.test(callbackURL)) return json(400, { error: 'bad_callback', message: 'Not an allowed return address.' });
+  const r = await authCall('POST', '/sign-in/social', { body: { provider: 'google', callbackURL, disableRedirect: true }, ip });
+  if (!r.ok || !r.data?.url) return authError(r);
+  const challenge = Object.entries(r.cookies)
+    .filter(([name, value]) => value && CHALLENGE_MARKERS.some((m) => name.endsWith(m)))
+    .map(([name, value]) => `${name}=${value}`).join('; ');
+  return json(200, { url: r.data.url, challenge });
+}
+
+// Google: step 2, the one-time code from the return address -> a session.
+async function finishGoogle(body, ip) {
+  const verifier = clean(body.verifier, 500);
+  const challenge = typeof body.challenge === 'string' ? body.challenge.slice(0, 2000) : '';
+  if (!verifier) return json(400, { error: 'missing', message: 'Sign-in didn\'t finish. Try again.' });
+  const r = await authCall('GET', '/get-session', { query: { neon_auth_session_verifier: verifier }, cookie: challenge || undefined, ip });
+  const session = r.cookies[SESSION_COOKIE];
+  if (!r.ok || !session) return json(400, { error: 'google_failed', message: 'Google sign-in didn\'t finish. Try again.' });
+  return signedIn(session, ip);
+}
+
+async function checkSession(body, ip) {
+  const session = typeof body.session === 'string' ? body.session : '';
+  sessionCache.delete(session);
+  const user = await userForSession(session, ip);
+  return user ? json(200, { user }) : json(401, { error: 'signed_out', message: 'Please sign in again.' });
+}
+
+async function signOut(body, ip) {
+  const session = typeof body.session === 'string' ? body.session : '';
+  if (session) {
+    sessionCache.delete(session);
+    await authCall('POST', '/sign-out', { body: {}, cookie: `${SESSION_COOKIE}=${session}`, ip }).catch(() => {});
+  }
+  return json(200, { ok: true });
+}
+
+// ---------- the listener's library, synced between devices ----------
+// One document per account:
+//   liked:     [track + { at }]                    newest first
+//   playlists: [{ id, title, createdAt, updatedAt, tracks }]
+//   recent:    [track + { at }]                    newest first, 30
+//   removed:   { likes: { id: at }, playlists: { id: at } }   so deletions win over older copies
+//   stats:     { devices: { [deviceId]: { months, meta, at } } }  each device's own counts
+// A device sends its whole state; the server merges (newest wins) and returns the result, plus the
+// other devices' stats added together.
+
+const MAX_LIBRARY_BYTES = 3 * 1024 * 1024;
+const TOMBSTONE_DAYS = 180;
+
+const arr = (v) => (Array.isArray(v) ? v : []);
+const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+function newestById(lists, stamp) {
+  const m = new Map();
+  for (const item of lists.flat()) {
+    if (!item || typeof item.id !== 'string') continue;
+    const prev = m.get(item.id);
+    if (!prev || num(item[stamp]) > num(prev[stamp])) m.set(item.id, item);
+  }
+  return [...m.values()];
+}
+
+function mergeStamps(a, b) {
+  const out = { ...obj(a) };
+  const cutoff = Date.now() - TOMBSTONE_DAYS * 86400000;
+  for (const [k, v] of Object.entries(obj(b))) if (num(v) > num(out[k])) out[k] = num(v);
+  for (const [k, v] of Object.entries(out)) if (num(v) < cutoff) delete out[k];
+  return out;
+}
+
+function mergeLibrary(stored, incoming, deviceId) {
+  const removed = {
+    likes: mergeStamps(stored.removed?.likes, incoming.removed?.likes),
+    playlists: mergeStamps(stored.removed?.playlists, incoming.removed?.playlists),
+  };
+  const liked = newestById([arr(stored.liked), arr(incoming.liked)], 'at')
+    .filter((t) => !(num(removed.likes[t.id]) >= num(t.at)))
+    .sort((a, b) => num(b.at) - num(a.at)).slice(0, 5000);
+  const playlists = newestById([arr(stored.playlists), arr(incoming.playlists)], 'updatedAt')
+    .filter((p) => !(num(removed.playlists[p.id]) >= num(p.updatedAt)))
+    .map((p) => ({ ...p, tracks: arr(p.tracks).slice(0, 3000) }))
+    .sort((a, b) => num(b.createdAt) - num(a.createdAt)).slice(0, 500);
+  const recent = newestById([arr(stored.recent), arr(incoming.recent)], 'at')
+    .sort((a, b) => num(b.at) - num(a.at)).slice(0, 30);
+  const devices = { ...obj(obj(stored.stats).devices) };
+  if (deviceId && incoming.stats) {
+    devices[deviceId] = { months: obj(incoming.stats.months), meta: obj(incoming.stats.meta), at: Date.now() };
+    const ids = Object.keys(devices).sort((a, b) => num(devices[b].at) - num(devices[a].at));
+    for (const id of ids.slice(20)) delete devices[id]; // keep the 20 most recent devices
+  }
+  return { liked, playlists, recent, removed, stats: { devices } };
+}
+
+// Every device's stats except `deviceId`, added together.
+function otherStats(devices, deviceId) {
+  const months = {};
+  const meta = {};
+  for (const [id, d] of Object.entries(obj(devices))) {
+    if (id === deviceId) continue;
+    Object.assign(meta, obj(d.meta));
+    for (const [k, m] of Object.entries(obj(d.months))) {
+      const t = (months[k] ||= { s: 0, n: 0, songs: {} });
+      t.s += num(m.s);
+      t.n += num(m.n);
+      for (const [song, row] of Object.entries(obj(m.songs))) {
+        const r = (t.songs[song] ||= [0, 0]);
+        r[0] += num(row?.[0]);
+        r[1] += num(row?.[1]);
+      }
+    }
+  }
+  return { months, meta };
+}
+
+const libraryReply = (doc, deviceId) => json(200, {
+  liked: doc.liked || [], playlists: doc.playlists || [], recent: doc.recent || [], removed: doc.removed || { likes: {}, playlists: {} },
+  statsOthers: otherStats(doc.stats?.devices, deviceId),
+});
+
+async function syncLibrary(request, user) {
+  const text = await request.text();
+  if (text.length > MAX_LIBRARY_BYTES) return json(413, { error: 'too_big', message: 'Your library is too big to sync.' });
+  let body;
+  try { body = JSON.parse(text); } catch (e) { return json(400, { error: 'bad_json' }); }
+  const deviceId = clean(body.deviceId, 60);
+  // Two devices can sync at the same moment: save only if nobody saved in between, else merge again.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const [cur] = await sql('SELECT doc, version FROM user_library WHERE user_id = $1', [user.id]);
+    const merged = mergeLibrary(cur?.doc || {}, obj(body), deviceId);
+    const saved = cur
+      ? await sql(`UPDATE user_library SET doc = $2::jsonb, version = version + 1, updated_at = now()
+                   WHERE user_id = $1 AND version = $3 RETURNING version`, [user.id, JSON.stringify(merged), cur.version])
+      : await sql(`INSERT INTO user_library (user_id, doc, version) VALUES ($1, $2::jsonb, 1)
+                   ON CONFLICT (user_id) DO NOTHING RETURNING version`, [user.id, JSON.stringify(merged)]);
+    if (saved.length) return libraryReply(merged, deviceId);
+  }
+  return json(409, { error: 'busy', message: 'Sync is busy. It will try again.' });
+}
+
+// ---------- routing ----------
+
 const CORS = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-  'access-control-allow-headers': 'content-type, x-admin-key',
+  'access-control-allow-headers': 'content-type, x-admin-key, x-session',
   'access-control-max-age': '86400',
 };
 
@@ -510,6 +766,23 @@ async function route(request) {
       if (request.method === 'POST' && path === '/plays') return await addPlay(await request.json());
       if (request.method === 'GET' && path === '/popular') return await popular(url);
       if (request.method === 'POST' && path === '/requests') return await addRequest(await request.json());
+
+      if (path.startsWith('/auth/') && request.method === 'POST') {
+        const ip = clientIp(request);
+        const body = obj(await request.json().catch(() => ({})));
+        if (path === '/auth/sign-up') return await signUp(body, ip);
+        if (path === '/auth/sign-in') return await signInEmail(body, ip);
+        if (path === '/auth/google') return await startGoogle(body, ip);
+        if (path === '/auth/google/finish') return await finishGoogle(body, ip);
+        if (path === '/auth/session') return await checkSession(body, ip);
+        if (path === '/auth/sign-out') return await signOut(body, ip);
+      }
+
+      if (path === '/me/library' && request.method === 'POST') {
+        const user = await userForSession(request.headers.get('x-session'), clientIp(request));
+        if (!user) return json(401, { error: 'signed_out', message: 'Please sign in again.' });
+        return await syncLibrary(request, user);
+      }
 
       if (path.startsWith('/admin/')) {
         if (!isAdmin(request)) {

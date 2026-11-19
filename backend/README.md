@@ -92,3 +92,22 @@ CREATE TABLE song_requests (
 );
 CREATE INDEX song_requests_device ON song_requests (device, created_at DESC);
 ```
+
+## Accounts and sync
+
+Neon Auth (Managed Better Auth) is enabled on the branch; users and sessions live in the `neon_auth` schema. Neon injects `NEON_AUTH_BASE_URL` into the function. `https://viberoom.expo.app` is a trusted domain (needed for sign-in requests and the Google return address).
+
+The app never calls Neon Auth itself: `/auth/sign-up`, `/auth/sign-in`, `/auth/google`, `/auth/google/finish`, `/auth/session` and `/auth/sign-out` do it and return a `session` string (the value of Neon Auth's session cookie). The app keeps it in secure storage and sends it as the `x-session` header. This avoids cross-site cookies, which phones and Safari don't keep.
+
+`POST /me/library` syncs a device's likes, playlists, recently played and stats:
+
+```sql
+CREATE TABLE user_library (
+  user_id text PRIMARY KEY,          -- neon_auth.user.id
+  doc jsonb NOT NULL DEFAULT '{}',   -- { liked, playlists, recent, removed, stats: { devices } }
+  version integer NOT NULL DEFAULT 1,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+```
+
+The device sends its whole state; `mergeLibrary` merges it with the stored one (the newest change wins; deletions are kept for 180 days so an older copy can't bring something back; each device's stats are stored separately and added up), saves it with a version check (two devices syncing at once retry), and returns the result plus the other devices' stats.
