@@ -18,7 +18,7 @@ const TITLES = {
 };
 
 export default function SignInScreen() {
-  const { busy, error, setError, signInEmail, signUpEmail, signInGoogle, sendResetCode, resetPassword } = useAuth();
+  const { busy, error, setError, signInEmail, signUpEmail, signInGoogle, sendResetCode, resetPassword, googleBusy, cancelGoogle } = useAuth();
   const [mode, setMode] = useState('sign-in'); // sign-in | sign-up | forgot | reset
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -60,6 +60,25 @@ export default function SignInScreen() {
     forgot: 'Enter your account\'s email. We\'ll send you a 6-digit code to set a new password.',
     reset: `Type the code sent to ${email.trim()} and choose a new password.`,
   }[mode];
+
+  // Signing in with Google (or finishing it after coming back): no form, straight on to the app.
+  if (googleBusy) {
+    return (
+      <LinearGradient colors={['#123528', colors.bg]} locations={[0, 0.55]} style={{ flex: 1 }}>
+        <SafeAreaView style={[styles.body, { flex: 1 }]}>
+          <View style={styles.logo}>
+            <Ionicons name="musical-notes" size={36} color={colors.bg} />
+          </View>
+          <ActivityIndicator color={colors.accent} size="large" style={{ marginTop: 8 }} />
+          <Text style={styles.h1}>Signing you in…</Text>
+          <Text style={styles.sub}>Finish with Google, and VibeRoom opens by itself.</Text>
+          <Pressable onPress={cancelGoogle} hitSlop={8} style={styles.switch} accessibilityRole="button">
+            <Text style={styles.switchText}><Text style={styles.linkStrong}>Cancel</Text></Text>
+          </Pressable>
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
 
   return (
     <LinearGradient colors={['#123528', colors.bg]} locations={[0, 0.55]} style={{ flex: 1 }}>

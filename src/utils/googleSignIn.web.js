@@ -25,6 +25,7 @@ const clearUrl = () => { try { window.history.replaceState(null, '', '/'); } cat
 
 /** Phone only. */
 export const resumeGoogle = async () => null;
+export const cancelGoogle = () => {};
 
 /** Back from Google on the website: { session, user }, or null when this isn't the return page. */
 export async function pendingGoogleReturn() {

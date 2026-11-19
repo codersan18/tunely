@@ -22,6 +22,7 @@ const PENDING_MS = 15 * 60 * 1000; // the backend keeps a handoff for 15 minutes
 const POLL_MS = 2500;
 const GRACE_MS = 8000; // after the tab closes, keep asking a little (the page may still be handing off)
 let waiting = false; // googleFlow is waiting
+let cancelWaiting = null; // stops googleFlow (the person tapped Cancel)
 
 /** The one-time code in a return link, or null. */
 export function verifierFrom(url) {
@@ -70,6 +71,7 @@ export async function googleFlow() {
       if (done) return;
       done = true;
       waiting = false;
+      cancelWaiting = null;
       clearInterval(timer);
       sub.remove();
       fn();
@@ -90,6 +92,7 @@ export async function googleFlow() {
         asking = false;
       }
     };
+    cancelWaiting = () => end(() => resolve(null));
     const timer = setInterval(ask, POLL_MS);
     const sub = Linking.addEventListener('url', (e) => {
       diag('link while waiting', `h=${handoffFrom(e.url) === handoff} code=${!!verifierFrom(e.url)}`);
@@ -103,6 +106,11 @@ export async function googleFlow() {
       .catch(() => {})
       .finally(() => { closedAt = Date.now(); ask(); });
   });
+}
+
+/** Stop waiting for Google (Cancel on the "Signing you in" screen). A late finish still counts. */
+export function cancelGoogle() {
+  cancelWaiting?.();
 }
 
 /**

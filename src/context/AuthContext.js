@@ -6,7 +6,7 @@ import {
   checkSession, signInWithEmail, signOutSession, signUpWithEmail,
   requestPasswordReset, resetPasswordWithCode,
 } from '../api/auth';
-import { googleFlow, pendingGoogleReturn, resumeGoogle, forwardToApp } from '../utils/googleSignIn';
+import { googleFlow, pendingGoogleReturn, resumeGoogle, cancelGoogle, forwardToApp } from '../utils/googleSignIn';
 import { clearLibraryForSignOut } from './LibraryContext';
 import { clearStats } from '../utils/stats';
 import { diag } from '../utils/diag';
@@ -29,6 +29,9 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Signing in with Google: the sign-in screen shows "Signing you in" instead of the form, so
+  // coming back from Google goes straight to the app.
+  const [googleBusy, setGoogleBusy] = useState(false);
   const sessionRef = useRef(null); sessionRef.current = session;
 
   const signedIn = useCallback(async (data) => {
@@ -95,6 +98,8 @@ export function AuthProvider({ children }) {
       }
       setStatus('signed-out');
       setBusy(true);
+      const link = await Linking.getInitialURL().catch(() => null);
+      if (typeof link === 'string' && /auth\/callback/.test(link)) setGoogleBusy(true);
       try {
         const back = await pendingGoogleReturn();
         diag('pendingGoogleReturn', back ? 'got session' : 'nothing');
@@ -104,6 +109,7 @@ export function AuthProvider({ children }) {
         setError(e.message || 'Google sign-in didn\'t finish. Try again.');
       } finally {
         setBusy(false);
+        setGoogleBusy(false);
       }
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -116,6 +122,7 @@ export function AuthProvider({ children }) {
     const resume = async (url) => {
       if (resuming.current) return;
       resuming.current = true;
+      if (typeof url === 'string' && /auth\/callback/.test(url)) setGoogleBusy(true);
       try {
         const back = await resumeGoogle(url);
         if (back) diag('resumeGoogle', `got session (url=${!!url})`);
@@ -126,6 +133,7 @@ export function AuthProvider({ children }) {
       } finally {
         resuming.current = false;
         setBusy(false);
+        setGoogleBusy(false);
       }
     };
     const linkSub = Linking.addEventListener('url', (e) => resume(e.url));
@@ -151,9 +159,14 @@ export function AuthProvider({ children }) {
   const signUpEmail = useCallback((email, password, name) => run(async () => signedIn(await signUpWithEmail(email, password, name))), [run, signedIn]);
   const signInGoogle = useCallback(() => run(async () => {
     diag('google tapped');
-    const back = await googleFlow();
-    diag('googleFlow done', back ? 'got session' : 'null');
-    if (back) await signedIn(back);
+    setGoogleBusy(true);
+    try {
+      const back = await googleFlow();
+      diag('googleFlow done', back ? 'got session' : 'null');
+      if (back) await signedIn(back);
+    } finally {
+      setGoogleBusy(false);
+    }
   }), [run, signedIn]);
 
   // Forgot password: a 6-digit code by email, then the code + a new password (signs in).
@@ -173,9 +186,9 @@ export function AuthProvider({ children }) {
   useEffect(() => { diag('status', status); }, [status]);
 
   const value = useMemo(() => ({
-    status, user, session, busy, error, setError,
+    status, user, session, busy, error, setError, googleBusy, cancelGoogle,
     signInEmail, signUpEmail, signInGoogle, signOut, expired: clearAll, sendResetCode, resetPassword,
-  }), [status, user, session, busy, error, signInEmail, signUpEmail, signInGoogle, signOut, clearAll, sendResetCode, resetPassword]);
+  }), [status, user, session, busy, error, googleBusy, signInEmail, signUpEmail, signInGoogle, signOut, clearAll, sendResetCode, resetPassword]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
