@@ -96,22 +96,28 @@ export function CatalogProvider({ children }) {
 
   // Most played by everyone in the last 7 days (counted by the server). Saved for offline use.
   const [popularIds, setPopularIds] = useState([]); // [{ id: server song id, plays }]
+  const [popularDone, setPopularDone] = useState(false); // the first answer (or failure) is in
   useEffect(() => {
     AsyncStorage.getItem(POPULAR_KEY).then((raw) => { if (raw) setPopularIds((cur) => (cur.length ? cur : JSON.parse(raw))); }).catch(() => {});
   }, []);
+  // Asked for at the same time as the songs (not after), and again when the songs refresh.
   useEffect(() => {
-    if (status !== 'ok') return;
+    if (status !== 'ok' && status !== 'loading') return;
     fetchPopular()
       .then((list) => { setPopularIds(list); AsyncStorage.setItem(POPULAR_KEY, JSON.stringify(list)).catch(() => {}); })
-      .catch(() => { /* keep the last list */ });
+      .catch(() => { /* keep the last list */ })
+      .finally(() => setPopularDone(true));
   }, [status, songs]);
   const popular = useMemo(() => {
     const byId = new Map(songs.map((s) => [s.songId, s]));
     return popularIds.map((p) => byId.get(p.id) && { ...byId.get(p.id), plays: p.plays }).filter(Boolean);
   }, [songs, popularIds]);
 
-  const value = useMemo(() => ({ songs, artists, albums, genres, popular, status, refreshing, refresh }),
-    [songs, artists, albums, genres, popular, status, refreshing, refresh]);
+  // Everything Home shows is in: the songs, and "Popular this week" (unless there's no server).
+  const ready = status !== 'loading' && (status !== 'ok' || popularDone);
+
+  const value = useMemo(() => ({ songs, artists, albums, genres, popular, status, ready, refreshing, refresh }),
+    [songs, artists, albums, genres, popular, status, ready, refreshing, refresh]);
   return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>;
 }
 

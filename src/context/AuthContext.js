@@ -33,6 +33,7 @@ export function AuthProvider({ children }) {
   // Signing in with Google: the sign-in screen shows "Signing you in" instead of the form, so
   // coming back from Google goes straight to the app.
   const [googleBusy, setGoogleBusy] = useState(false);
+  const [justSignedIn, setJustSignedIn] = useState(false); // this start of the app signed in (the loading screens say so)
   const sessionRef = useRef(null); sessionRef.current = session;
 
   const signedIn = useCallback(async (data) => {
@@ -52,6 +53,7 @@ export function AuthProvider({ children }) {
     setSession(data.session);
     setUser(data.user);
     setError('');
+    setJustSignedIn(true);
     setStatus('signed-in');
     return true;
   }, []);
@@ -68,6 +70,7 @@ export function AuthProvider({ children }) {
     setSession(null);
     setUser(null);
     setGoogleBusy(false);
+    setJustSignedIn(false);
     setStatus('signed-out');
   }, []);
 
@@ -194,9 +197,9 @@ export function AuthProvider({ children }) {
   useEffect(() => { diag('status', status); }, [status]);
 
   const value = useMemo(() => ({
-    status, user, session, busy, error, setError, googleBusy, cancelGoogle,
+    status, user, session, busy, error, setError, googleBusy, cancelGoogle, justSignedIn,
     signInEmail, signUpEmail, signInGoogle, signOut, expired: clearAll, sendResetCode, resetPassword,
-  }), [status, user, session, busy, error, googleBusy, signInEmail, signUpEmail, signInGoogle, signOut, clearAll, sendResetCode, resetPassword]);
+  }), [status, user, session, busy, error, googleBusy, justSignedIn, signInEmail, signUpEmail, signInGoogle, signOut, clearAll, sendResetCode, resetPassword]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

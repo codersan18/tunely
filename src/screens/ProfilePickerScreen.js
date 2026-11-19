@@ -16,12 +16,12 @@ const MAX_PROFILES = 6;
 // Profile → Switch profile). "Manage profiles" turns the tiles into edit buttons; "Add profile"
 // makes a new one (up to 6).
 export default function ProfilePickerScreen() {
-  const { user } = useAuth();
+  const { user, justSignedIn } = useAuth();
   const { profiles, select, lastId } = useProfiles();
   const [managing, setManaging] = useState(false);
   const [editing, setEditing] = useState(undefined); // undefined = closed, null = new, profile = edit
 
-  if (!profiles) return <LoadingScreen />;
+  if (!profiles) return <LoadingScreen message={justSignedIn ? 'Signing you in…' : ''} />;
 
   const open = (p) => (managing ? setEditing(p) : select(p.id));
 

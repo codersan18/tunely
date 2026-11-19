@@ -19,6 +19,7 @@ import registerServiceWorker from './src/utils/serviceWorker';
 import { checkForNewVersion } from './src/utils/newVersion';
 import { appReturnUrl, isGoogleReturn } from './src/utils/googleSignIn';
 import LoadingScreen from './src/components/LoadingScreen';
+import StartCurtain from './src/components/StartCurtain';
 import { colors } from './src/theme';
 
 registerServiceWorker(); // web only; does nothing on the phone
@@ -38,7 +39,7 @@ function Gate() {
       </View>
     );
   }
-  if (status === 'loading') return <LoadingScreen />;
+  if (status === 'loading') return <LoadingScreen message={isGoogleReturn() ? 'Signing you in…' : ''} />;
   if (status !== 'signed-in') return <SignInScreen />;
   return (
     <ProfilesProvider key={user?.id || 'me'}>
@@ -50,9 +51,9 @@ function Gate() {
 // Like Netflix: "Who's listening?" first when the account has more than one profile. Everything
 // below is keyed by the profile, so switching profiles starts its own library, stats and queue.
 function ProfileGate() {
-  const { user } = useAuth();
+  const { user, justSignedIn } = useAuth();
   const { profile, autoPicking } = useProfiles();
-  if (!profile && autoPicking) return <LoadingScreen />; // one profile: going straight in
+  if (!profile && autoPicking) return <LoadingScreen message={justSignedIn ? 'Signing you in…' : ''} />; // one profile: going straight in
   if (!profile) return <ProfilePickerScreen />;
   return (
     // Library (likes, playlists, downloads) wraps the player, because the
@@ -64,6 +65,8 @@ function ProfileGate() {
           <SettingsProvider>
             <PlayerProvider>
               <AppNavigator />
+              {/* Home appears whole: the loading screen until it has its songs and covers. */}
+              <StartCurtain />
             </PlayerProvider>
           </SettingsProvider>
         </LocalMusicProvider>
