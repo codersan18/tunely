@@ -17,6 +17,7 @@
 //   POST   /auth/forgot           -> { email }: emails a 6-digit code (same answer whether or not the account exists)
 //   POST   /auth/reset            -> { email, code, password } -> new password, then { session, user }
 //   POST   /me/library            -> sync likes, playlists, recently played and stats (see mergeLibrary)
+//   POST   /me/profile            -> { nickname } -> { user } (the greeting's name; "" clears it)
 // Admin (header "x-admin-key: <ADMIN_KEY>"):
 //   POST   /admin/verify          -> 200 if the key is right
 //   POST   /admin/prepare         -> duplicate check + short-lived upload URLs
@@ -583,10 +584,31 @@ async function userForSession(session, ip) {
   return user;
 }
 
+// The account plus what the person set in VibeRoom (user_profile): their nickname, used in the
+// app's greeting ("Good morning, <nickname>") on every device.
+async function withProfile(user) {
+  const rows = await sql('SELECT nickname FROM user_profile WHERE user_id = $1', [user.id]).catch(() => []);
+  return { ...user, nickname: rows[0]?.nickname || '' };
+}
+
 async function signedIn(session, ip) {
   const user = await userForSession(session, ip);
   if (!user) return json(502, { error: 'no_session', message: 'Signed in, but the session could not be read. Try again.' });
-  return json(200, { session, user });
+  return json(200, { session, user: await withProfile(user) });
+}
+
+const NICKNAME_MAX = 30;
+
+async function updateProfile(body, user) {
+  // One line, no control characters; empty clears it (the greeting then uses the first name).
+  const nickname = typeof body.nickname === 'string'
+    ? body.nickname.replace(/[\u0000-\u001f\u007f]/g, '').trim().replace(/\s+/g, ' ')
+    : null;
+  if (nickname === null) return json(400, { error: 'missing', message: 'Enter a nickname.' });
+  if ([...nickname].length > NICKNAME_MAX) return json(400, { error: 'too_long', message: `Keep it to ${NICKNAME_MAX} characters.` });
+  await sql(`INSERT INTO user_profile (user_id, nickname) VALUES ($1, $2)
+             ON CONFLICT (user_id) DO UPDATE SET nickname = EXCLUDED.nickname, updated_at = now()`, [user.id, nickname]);
+  return json(200, { user: await withProfile(user) });
 }
 
 async function signUp(body, ip) {
@@ -712,7 +734,7 @@ async function checkSession(body, ip) {
   const session = typeof body.session === 'string' ? body.session : '';
   sessionCache.delete(session);
   const user = await userForSession(session, ip);
-  return user ? json(200, { user }) : json(401, { error: 'signed_out', message: 'Please sign in again.' });
+  return user ? json(200, { user: await withProfile(user) }) : json(401, { error: 'signed_out', message: 'Please sign in again.' });
 }
 
 async function signOut(body, ip) {
@@ -875,6 +897,12 @@ async function route(request) {
         const user = await userForSession(request.headers.get('x-session'), clientIp(request));
         if (!user) return json(401, { error: 'signed_out', message: 'Please sign in again.' });
         return await syncLibrary(request, user);
+      }
+
+      if (path === '/me/profile' && request.method === 'POST') {
+        const user = await userForSession(request.headers.get('x-session'), clientIp(request));
+        if (!user) return json(401, { error: 'signed_out', message: 'Please sign in again.' });
+        return await updateProfile(obj(await request.json().catch(() => ({}))), user);
       }
 
       if (path.startsWith('/admin/')) {

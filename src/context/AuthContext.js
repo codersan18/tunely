@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { keyStore } from '../utils/files';
 import {
   checkSession, signInWithEmail, signOutSession, signUpWithEmail,
-  requestPasswordReset, resetPasswordWithCode,
+  requestPasswordReset, resetPasswordWithCode, updateProfile,
 } from '../api/auth';
 import { googleFlow, pendingGoogleReturn, resumeGoogle, cancelGoogle, forwardToApp } from '../utils/googleSignIn';
 import { clearLibraryForSignOut } from './LibraryContext';
@@ -177,6 +177,13 @@ export function AuthProvider({ children }) {
   }, [run]);
   const resetPassword = useCallback((email, code, password) => run(async () => signedIn(await resetPasswordWithCode(email, code, password))), [run, signedIn]);
 
+  // The nickname for the greeting, saved to the account (so every device shows it). Throws on failure.
+  const setNickname = useCallback(async (nickname) => {
+    const { user: fresh } = await updateProfile(sessionRef.current, { nickname });
+    setUser(fresh);
+    AsyncStorage.setItem(USER_KEY, JSON.stringify(fresh)).catch(() => {});
+  }, []);
+
   const signOut = useCallback(async () => {
     const s = sessionRef.current;
     await clearAll('sign out');
@@ -186,9 +193,9 @@ export function AuthProvider({ children }) {
   useEffect(() => { diag('status', status); }, [status]);
 
   const value = useMemo(() => ({
-    status, user, session, busy, error, setError, googleBusy, cancelGoogle,
+    status, user, session, busy, error, setError, googleBusy, cancelGoogle, setNickname,
     signInEmail, signUpEmail, signInGoogle, signOut, expired: clearAll, sendResetCode, resetPassword,
-  }), [status, user, session, busy, error, googleBusy, signInEmail, signUpEmail, signInGoogle, signOut, clearAll, sendResetCode, resetPassword]);
+  }), [status, user, session, busy, error, googleBusy, setNickname, signInEmail, signUpEmail, signInGoogle, signOut, clearAll, sendResetCode, resetPassword]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

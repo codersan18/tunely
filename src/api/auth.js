@@ -46,3 +46,4 @@ export const signOutSession = (session) => post('/auth/sign-out', { session }).c
 export const requestPasswordReset = (email) => post('/auth/forgot', { email });
 export const resetPasswordWithCode = (email, code, password) => post('/auth/reset', { email, code, password });
 export const syncLibrary = (session, body) => post('/me/library', body, { 'x-session': session });
+export const updateProfile = (session, profile) => post('/me/profile', profile, { 'x-session': session });

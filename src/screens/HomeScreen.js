@@ -9,13 +9,9 @@ import { useLibrary } from '../context/LibraryContext';
 import { useCatalog } from '../context/CatalogContext';
 import TrackRow from '../components/TrackRow';
 import Cover from '../components/Cover';
+import { useAuth } from '../context/AuthContext';
+import { greeting, greetingName } from '../utils/greeting';
 
-const greeting = () => {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 17) return 'Good afternoon';
-  return 'Good evening';
-};
 
 function Carousel({ title, data, renderItem, keyExtractor }) {
   if (!data?.length) return null;
@@ -39,6 +35,7 @@ export default function HomeScreen({ navigation }) {
   const { recent, liked, downloadedTracks, playlists } = useLibrary();
   const { songs, artists, albums, popular, status, refreshing, refresh } = useCatalog();
   const top = popular.slice(0, 15);
+  const name = greetingName(useAuth().user);
   const open = (playlistId) => navigation.navigate('Playlist', { playlistId });
 
   // Quick-access tiles: the user's own collections.
@@ -65,7 +62,9 @@ export default function HomeScreen({ navigation }) {
   const header = (
     <View>
       <View style={styles.header}>
-        <Text style={styles.h1}>{greeting()}</Text>
+        <Text style={styles.h1} numberOfLines={2}>
+          {greeting()}{name ? ', ' : ''}{!!name && <Text style={styles.name}>{name}</Text>}
+        </Text>
       </View>
 
       {(status === 'offline' || status === 'error') && (
@@ -176,6 +175,7 @@ const styles = StyleSheet.create({
   content: { paddingBottom: 24 },
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 },
   h1: { color: colors.text, fontSize: 24, fontWeight: '800' },
+  name: { color: colors.accent },
   h2: { color: colors.text, fontSize: 21, fontWeight: '800', marginTop: 28, marginBottom: 12, paddingHorizontal: 16 },
   row: { gap: 14, paddingHorizontal: 16 },
   h2Row: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingRight: 16 },

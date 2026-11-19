@@ -122,4 +122,14 @@ CREATE TABLE google_handoff (
 );
 ```
 
+`POST /me/profile` saves the nickname set in the app's Profile tab (Home greets with it: "Good morning, <nickname>"). Sign-in and session replies include it as `user.nickname`, so other devices pick it up when they next check the session.
+
+```sql
+CREATE TABLE user_profile (
+  user_id text PRIMARY KEY,           -- neon_auth.user.id
+  nickname text NOT NULL DEFAULT '',  -- up to 30 characters; '' = use the first name
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+```
+
 The device sends its whole state; `mergeLibrary` merges it with the stored one (the newest change wins; deletions are kept for 180 days so an older copy can't bring something back; each device's stats are stored separately and added up), saves it with a version check (two devices syncing at once retry), and returns the result plus the other devices' stats.
