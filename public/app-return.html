@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0E0E10">
+<meta name="robots" content="noindex">
+<title>VibeRoom</title>
+<!--
+  The phone app's Google sign-in comes back here (src/utils/googleSignIn.js), in the browser tab.
+  A tiny page instead of the whole website, so it shows at once, and it looks exactly like the
+  app's loading screen (src/components/LoadingScreen.js), so going back to the app is seamless.
+  It leaves Google's one-time code with the backend under the app's handoff id (h), then opens the
+  app. If the browser doesn't open the app by itself, a button appears.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #0E0E10; color: #A7A7B0; font-family: system-ui, -apple-system, Roboto, sans-serif; }
+  .screen { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 24px; box-sizing: border-box; text-align: center; }
+  .logo { width: 68px; height: 68px; border-radius: 18px; background: #2EE6A6; display: flex; align-items: center; justify-content: center; }
+  .spin { width: 32px; height: 32px; border-radius: 50%; border: 4px solid rgba(46, 230, 166, 0.2); border-top-color: #2EE6A6; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .msg { font-size: 15px; min-height: 20px; }
+  .spacer { height: 36px; } /* where the app's loading screen has Cancel, so the logo lines up */
+  .open { display: none; background: #2EE6A6; color: #0E0E10; font-weight: 800; font-size: 16px; text-decoration: none; border-radius: 26px; padding: 14px 36px; }
+</style>
+</head>
+<body>
+<div class="screen">
+  <div class="logo" aria-hidden="true">
+    <svg width="34" height="34" viewBox="0 0 512 512" fill="#0E0E10"><path d="M421.84 37.37a25.86 25.86 0 0 0-22.6-4.46L199.92 86.49A32.3 32.3 0 0 0 176 118v226c0 6.74-4.36 12.56-11.11 14.83l-.12.05-52 18C92.88 383.53 80 402 80 423.91a55.54 55.54 0 0 0 23.23 45.63A54.78 54.78 0 0 0 135.34 480a55.82 55.82 0 0 0 17.75-2.93l.38-.13 21.84-7.94A47.84 47.84 0 0 0 208 423.91v-212c0-7.29 4.77-13.21 12.16-15.07l.21-.06L395 150.14a4 4 0 0 1 5 3.86v141.93c0 6.75-4.25 12.38-11.11 14.68l-.25.09-50.89 18.11A49.09 49.09 0 0 0 304 375.92a55.67 55.67 0 0 0 23.23 45.8 54.63 54.63 0 0 0 49.88 7.35l.36-.12 21.84-7.95A47.83 47.83 0 0 0 432 375.92V58a25.74 25.74 0 0 0-10.16-20.63z"/></svg>
+  </div>
+  <div class="spin" id="spin"></div>
+  <div class="msg" id="msg">Signing you in…</div>
+  <div class="spacer" id="spacer"></div>
+  <a class="open" id="open" href="#">Open VibeRoom</a>
+</div>
+<script>
+  (function () {
+    var API = 'https://br-polished-mud-azcthrf7-api.compute.c-3.ap-southeast-1.aws.neon.tech';
+    var search = location.search;
+    var q = new URLSearchParams(search);
+    var handoff = q.get('h');
+    var code = q.get('neon_auth_session_verifier');
+    var target = /android/i.test(navigator.userAgent)
+      ? 'intent://auth/callback' + search + '#Intent;scheme=viberoom;package=com.tunely.app;end'
+      : 'viberoom://auth/callback' + search;
+    var button = document.getElementById('open');
+    button.href = target;
+
+    var open = function () { try { location.href = target; } catch (e) { /* the button is there */ } };
+    var handOff = handoff && code
+      ? fetch(API + '/auth/google/handoff', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ handoff: handoff, verifier: code }),
+        keepalive: true,
+      }).catch(function () {})
+      : Promise.resolve();
+    // Open the app once the code is with the backend (or after a second at most).
+    var opened = false;
+    var go = function () { if (!opened) { opened = true; open(); } };
+    handOff.then(go);
+    setTimeout(go, 1000);
+
+    // Still here: the browser didn't open the app (it can need a tap).
+    setTimeout(function () {
+      document.getElementById('spin').style.display = 'none';
+      document.getElementById('msg').textContent = code ? 'Signed in. Go back to the VibeRoom app to continue.' : "Sign-in didn't finish. Go back to the app and try again.";
+      document.getElementById('spacer').style.display = 'none';
+      button.style.display = 'inline-block';
+    }, 3000);
+  })();
+</script>
+</body>
+</html>

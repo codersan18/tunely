@@ -105,7 +105,7 @@ export function AuthProvider({ children }) {
       setStatus('signed-out');
       setBusy(true);
       const link = await Linking.getInitialURL().catch(() => null);
-      if (typeof link === 'string' && /auth\/callback/.test(link)) setGoogleBusy(true);
+      if (typeof link === 'string' && /auth\/callback|app-return\.html/.test(link)) setGoogleBusy(true);
       let ok = false;
       try {
         const back = await pendingGoogleReturn();
@@ -129,7 +129,7 @@ export function AuthProvider({ children }) {
     const resume = async (url) => {
       if (resuming.current) return;
       resuming.current = true;
-      if (typeof url === 'string' && /auth\/callback/.test(url)) setGoogleBusy(true);
+      if (typeof url === 'string' && /auth\/callback|app-return\.html/.test(url)) setGoogleBusy(true);
       let ok = false;
       try {
         const back = await resumeGoogle(url);

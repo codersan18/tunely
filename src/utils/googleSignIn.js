@@ -15,7 +15,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { startGoogle, claimGoogle } from '../api/auth';
 import { diag } from './diag';
 
-const CALLBACK = 'https://viberoom.expo.app/auth/callback?app=1';
+// A tiny page that looks like the app's loading screen (public/app-return.html), so coming back
+// from Google doesn't flash the website.
+const CALLBACK = 'https://viberoom.expo.app/app-return.html?app=1';
+const RETURN_LINK = /auth\/callback|app-return\.html/;
 const APP_RETURN = 'viberoom://auth/callback';
 const PENDING_KEY = 'viberoom:google:v2'; // { handoff, at }: a sign-in that may still finish
 const PENDING_MS = 15 * 60 * 1000; // the backend keeps a handoff for 15 minutes
@@ -26,11 +29,11 @@ let cancelWaiting = null; // stops googleFlow (the person tapped Cancel)
 
 /** The one-time code in a return link, or null. */
 export function verifierFrom(url) {
-  if (typeof url !== 'string' || !/auth\/callback/.test(url)) return null;
+  if (typeof url !== 'string' || !RETURN_LINK.test(url)) return null;
   const m = url.match(/[?&]neon_auth_session_verifier=([^&#]+)/);
   return m ? decodeURIComponent(m[1]) : null;
 }
-const handoffFrom = (url) => (typeof url === 'string' && /auth\/callback/.test(url) ? url.match(/[?&]h=([0-9a-f]{32})\b/)?.[1] || null : null);
+const handoffFrom = (url) => (typeof url === 'string' && RETURN_LINK.test(url) ? url.match(/[?&]h=([0-9a-f]{32})\b/)?.[1] || null : null);
 
 async function savedHandoff() {
   try {

@@ -521,7 +521,8 @@ const AUTH_BASE = () => process.env.NEON_AUTH_BASE_URL || 'https://ep-snowy-fore
 const AUTH_ORIGIN = 'https://viberoom.expo.app'; // a trusted domain in Neon Auth
 const SESSION_COOKIE = '__Secure-neon-auth.session_token';
 const CHALLENGE_MARKERS = ['.session_challenge', '.session_challange'];
-const CALLBACK_OK = /^(https:\/\/viberoom\.expo\.app|http:\/\/localhost(:\d+)?)\/auth\/callback(\?|$)/;
+// The website's return page, or the phone app's tiny one (public/app-return.html).
+const CALLBACK_OK = /^(https:\/\/viberoom\.expo\.app|http:\/\/localhost(:\d+)?)\/(auth\/callback|app-return\.html)(\?|$)/;
 
 function setCookies(res) {
   const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : (res.headers.get('set-cookie') || '').split(/,(?=\s*[^;,=\s]+=)/);
