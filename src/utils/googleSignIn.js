@@ -14,6 +14,7 @@ import { startGoogle } from '../api/auth';
 const CALLBACK = 'https://viberoom.expo.app/auth/callback?app=1';
 const APP_RETURN = 'viberoom://auth/callback';
 const PENDING_KEY = 'viberoom:google:v1'; // the challenge, in case Android restarts the app meanwhile
+let waiting = false; // googleFlow is waiting for the return link
 
 /** The one-time code in a return link, or null. */
 export function verifierFrom(url) {
@@ -26,14 +27,17 @@ export function verifierFrom(url) {
 export async function googleFlow() {
   const { url, challenge } = await startGoogle(CALLBACK);
   await AsyncStorage.setItem(PENDING_KEY, challenge).catch(() => {});
+  waiting = true;
   return new Promise((resolve) => {
     let done = false;
     const finish = (verifier) => {
       if (done) return;
       done = true;
+      waiting = false;
       sub.remove();
       WebBrowser.dismissBrowser().catch(() => {});
-      AsyncStorage.removeItem(PENDING_KEY).catch(() => {});
+      // Without a code, keep the challenge: the return link can still come (lateGoogleReturn).
+      if (verifier) AsyncStorage.removeItem(PENDING_KEY).catch(() => {});
       resolve(verifier ? { verifier, challenge } : null);
     };
     const sub = Linking.addEventListener('url', (e) => { const v = verifierFrom(e.url); if (v) finish(v); });
@@ -56,5 +60,20 @@ export async function pendingGoogleReturn() {
   return { verifier, challenge: challenge || '' };
 }
 
+/**
+ * A return link that came after googleFlow stopped waiting (the person went back to the app
+ * before tapping "Open VibeRoom"): { verifier, challenge } or null.
+ */
+export async function lateGoogleReturn(url) {
+  if (waiting) return null; // googleFlow handles it
+  const verifier = verifierFrom(url);
+  if (!verifier) return null;
+  const challenge = await AsyncStorage.getItem(PENDING_KEY).catch(() => null);
+  if (!challenge) return null;
+  AsyncStorage.removeItem(PENDING_KEY).catch(() => {});
+  return { verifier, challenge };
+}
+
 /** Web only: the callback page opened in a phone's browser tab. */
 export const forwardToApp = () => false;
+export const appReturnUrl = () => null;

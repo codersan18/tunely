@@ -1,12 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { keyStore } from '../utils/files';
 import {
   checkSession, finishGoogle, signInWithEmail, signOutSession, signUpWithEmail,
   requestPasswordReset, resetPasswordWithCode,
 } from '../api/auth';
-import { googleFlow, pendingGoogleReturn, forwardToApp } from '../utils/googleSignIn';
+import { googleFlow, pendingGoogleReturn, lateGoogleReturn, forwardToApp } from '../utils/googleSignIn';
 import { clearLibraryForSignOut } from './LibraryContext';
 import { clearStats } from '../utils/stats';
 
@@ -89,6 +89,19 @@ export function AuthProvider({ children }) {
       }
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A Google return link that arrives after the sign-in screen stopped waiting for it.
+  useEffect(() => {
+    if (status !== 'signed-out') return undefined;
+    const sub = Linking.addEventListener('url', async (e) => {
+      const back = await lateGoogleReturn(e.url);
+      if (!back) return;
+      setBusy(true);
+      setError('');
+      try { await signedIn(await finishGoogle(back.verifier, back.challenge)); } catch (err) { setError(err.message); } finally { setBusy(false); }
+    });
+    return () => sub.remove();
+  }, [status, signedIn]);
 
   // Check the session when signed in and whenever the app comes back.
   useEffect(() => {

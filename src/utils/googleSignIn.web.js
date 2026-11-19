@@ -22,6 +22,9 @@ export async function googleFlow() {
 
 const clearUrl = () => { try { window.history.replaceState(null, '', '/'); } catch (e) { /* ignore */ } };
 
+/** Phone only (the website finishes in pendingGoogleReturn). */
+export const lateGoogleReturn = async () => null;
+
 /** Back from Google on the website: { verifier, challenge } or null. */
 export async function pendingGoogleReturn() {
   if (!isCallback()) return null;
@@ -32,11 +35,28 @@ export async function pendingGoogleReturn() {
   return verifier ? { verifier, challenge } : null;
 }
 
-/** The phone's sign-in finished in a browser tab: hand the code to the app. true if forwarding. */
+/**
+ * The link that hands the phone's sign-in to the app, or null when this isn't that page.
+ * On Android it's an intent:// link naming the app, which Chrome opens more reliably than viberoom://.
+ */
+export function appReturnUrl() {
+  if (!isCallback()) return null;
+  const search = window.location.search;
+  if (new URLSearchParams(search).get('app') !== '1') return null;
+  if (/android/i.test(navigator.userAgent || '')) {
+    return `intent://auth/callback${search}#Intent;scheme=viberoom;package=com.tunely.app;end`;
+  }
+  return `viberoom://auth/callback${search}`;
+}
+
+/**
+ * The phone's sign-in finished in a browser tab: hand the code to the app. true if forwarding.
+ * Chrome on Android often blocks a page from opening an app without a tap, so App.js also shows
+ * an "Open VibeRoom" button that opens appReturnUrl().
+ */
 export function forwardToApp() {
-  if (!isCallback()) return false;
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('app') !== '1') return false;
-  window.location.replace(`viberoom://auth/callback${window.location.search}`);
+  const url = appReturnUrl();
+  if (!url) return false;
+  try { window.location.href = url; } catch (e) { /* blocked: the button is there */ }
   return true;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LibraryProvider } from './src/context/LibraryContext';
@@ -15,6 +15,7 @@ import OpeningScreen from './src/components/OpeningScreen';
 import WebFrame from './src/components/WebFrame';
 import registerServiceWorker from './src/utils/serviceWorker';
 import { checkForNewVersion } from './src/utils/newVersion';
+import { appReturnUrl } from './src/utils/googleSignIn';
 import { colors } from './src/theme';
 
 registerServiceWorker(); // web only; does nothing on the phone
@@ -26,7 +27,11 @@ function Gate() {
   if (status === 'forwarding') {
     return (
       <View style={styles.center}>
-        <Text style={styles.msg}>Signed in with Google. Returning to the VibeRoom app…</Text>
+        <Text style={styles.msg}>Signed in with Google. Tap below to go back to the VibeRoom app.</Text>
+        <Pressable onPress={() => { window.location.href = appReturnUrl(); }} accessibilityRole="button"
+          style={({ pressed }) => [styles.open, pressed && { opacity: 0.7 }]}>
+          <Text style={styles.openText}>Open VibeRoom</Text>
+        </Pressable>
       </View>
     );
   }
@@ -51,7 +56,8 @@ function Gate() {
 }
 
 export default function App() {
-  const [opening, setOpening] = useState(true);
+  // No opening animation on the page that hands a phone's Google sign-in back to the app.
+  const [opening, setOpening] = useState(() => !appReturnUrl());
   // Once the opening screen is gone, see whether a newer APK has been released.
   useEffect(() => { if (!opening) checkForNewVersion(); }, [opening]);
   return (
@@ -71,5 +77,7 @@ export default function App() {
 const styles = StyleSheet.create({
   blank: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  msg: { color: colors.text, fontSize: 16, textAlign: 'center' },
+  msg: { color: colors.text, fontSize: 16, textAlign: 'center', lineHeight: 22 },
+  open: { marginTop: 24, backgroundColor: colors.accent, borderRadius: 26, paddingVertical: 14, paddingHorizontal: 36 },
+  openText: { color: colors.bg, fontSize: 16, fontWeight: '800' },
 });
