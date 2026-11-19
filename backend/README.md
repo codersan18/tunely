@@ -110,4 +110,16 @@ CREATE TABLE user_library (
 );
 ```
 
+Google sign-in on the phone uses a hand-off, because Android doesn't reliably pass the return link to the app (Chrome blocks a page from opening an app without a tap, and the app may be restarted meanwhile). `/auth/google` with a return address containing `app=1` adds a one-time id `h` to it and keeps Google's challenge under that id. The website's return page sends the code there (`/auth/google/handoff`), and the app collects the session (`/auth/google/claim`) while it waits, when it comes back to the front, and when it starts. Rows are deleted after 15 minutes.
+
+```sql
+CREATE TABLE google_handoff (
+  id text PRIMARY KEY,                -- the one-time id (32 hex)
+  challenge text,                     -- Neon Auth's challenge cookie from the start
+  verifier text,                      -- Google's one-time code, left by the return page
+  session text,                       -- set once claimed (asking again within 15 min gives it again)
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+```
+
 The device sends its whole state; `mergeLibrary` merges it with the stored one (the newest change wins; deletions are kept for 180 days so an older copy can't bring something back; each device's stats are stored separately and added up), saves it with a version check (two devices syncing at once retry), and returns the result plus the other devices' stats.

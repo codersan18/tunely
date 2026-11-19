@@ -3,10 +3,10 @@ import { AppState, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { keyStore } from '../utils/files';
 import {
-  checkSession, finishGoogle, signInWithEmail, signOutSession, signUpWithEmail,
+  checkSession, signInWithEmail, signOutSession, signUpWithEmail,
   requestPasswordReset, resetPasswordWithCode,
 } from '../api/auth';
-import { googleFlow, pendingGoogleReturn, lateGoogleReturn, forwardToApp } from '../utils/googleSignIn';
+import { googleFlow, pendingGoogleReturn, resumeGoogle, forwardToApp } from '../utils/googleSignIn';
 import { clearLibraryForSignOut } from './LibraryContext';
 import { clearStats } from '../utils/stats';
 
@@ -67,40 +67,54 @@ export function AuthProvider({ children }) {
     }
   }, [clearAll]);
 
-  // Start: finish a Google sign-in we just came back from, or restore the saved session.
+  // Start: restore the saved session, or else show the sign-in screen and finish a Google sign-in
+  // we're coming back from (it shows as busy meanwhile, never as a blank screen).
   useEffect(() => {
     if (status === 'forwarding') return;
     (async () => {
-      try {
-        const back = await pendingGoogleReturn();
-        if (back) {
-          setBusy(true);
-          try { await signedIn(await finishGoogle(back.verifier, back.challenge)); return; } catch (e) { setError(e.message); } finally { setBusy(false); }
-        }
-        const saved = await keyStore.get(SESSION_KEY).catch(() => null);
-        if (!saved) { setStatus('signed-out'); return; }
+      const saved = await keyStore.get(SESSION_KEY).catch(() => null);
+      if (saved) {
         let cached = null;
         try { cached = JSON.parse((await AsyncStorage.getItem(USER_KEY)) || 'null'); } catch (e) { /* none */ }
         setSession(saved);
         setUser(cached);
         setStatus('signed-in');
+        return;
+      }
+      setStatus('signed-out');
+      setBusy(true);
+      try {
+        const back = await pendingGoogleReturn();
+        if (back) await signedIn(back);
       } catch (e) {
-        setStatus('signed-out');
+        setError(e.message || 'Google sign-in didn\'t finish. Try again.');
+      } finally {
+        setBusy(false);
       }
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // A Google return link that arrives after the sign-in screen stopped waiting for it.
+  // Phone, signed out: finish a Google sign-in that completes after the sign-in screen stopped
+  // waiting (its return link arrives, or the person switches back to the app).
+  const resuming = useRef(false);
   useEffect(() => {
     if (status !== 'signed-out') return undefined;
-    const sub = Linking.addEventListener('url', async (e) => {
-      const back = await lateGoogleReturn(e.url);
-      if (!back) return;
-      setBusy(true);
-      setError('');
-      try { await signedIn(await finishGoogle(back.verifier, back.challenge)); } catch (err) { setError(err.message); } finally { setBusy(false); }
-    });
-    return () => sub.remove();
+    const resume = async (url) => {
+      if (resuming.current) return;
+      resuming.current = true;
+      try {
+        const back = await resumeGoogle(url);
+        if (back) { setBusy(true); await signedIn(back); }
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        resuming.current = false;
+        setBusy(false);
+      }
+    };
+    const linkSub = Linking.addEventListener('url', (e) => resume(e.url));
+    const appSub = AppState.addEventListener('change', (s) => { if (s === 'active') resume(null); });
+    return () => { linkSub.remove(); appSub.remove(); };
   }, [status, signedIn]);
 
   // Check the session when signed in and whenever the app comes back.
@@ -121,7 +135,7 @@ export function AuthProvider({ children }) {
   const signUpEmail = useCallback((email, password, name) => run(async () => signedIn(await signUpWithEmail(email, password, name))), [run, signedIn]);
   const signInGoogle = useCallback(() => run(async () => {
     const back = await googleFlow();
-    if (back) await signedIn(await finishGoogle(back.verifier, back.challenge));
+    if (back) await signedIn(back);
   }), [run, signedIn]);
 
   // Forgot password: a 6-digit code by email, then the code + a new password (signs in).

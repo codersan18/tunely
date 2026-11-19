@@ -27,7 +27,7 @@ function Gate() {
   if (status === 'forwarding') {
     return (
       <View style={styles.center}>
-        <Text style={styles.msg}>Signed in with Google. Tap below to go back to the VibeRoom app.</Text>
+        <Text style={styles.msg}>Signed in with Google. Go back to the VibeRoom app to continue.</Text>
         <Pressable onPress={() => { window.location.href = appReturnUrl(); }} accessibilityRole="button"
           style={({ pressed }) => [styles.open, pressed && { opacity: 0.7 }]}>
           <Text style={styles.openText}>Open VibeRoom</Text>

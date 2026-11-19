@@ -10,6 +10,8 @@
 //   POST   /auth/sign-in          -> { email, password } -> { session, user }
 //   POST   /auth/google           -> { callbackURL } -> { url, challenge }  (open url; Google returns to callbackURL)
 //   POST   /auth/google/finish    -> { verifier, challenge } -> { session, user }
+//   POST   /auth/google/handoff   -> { handoff, verifier }   (phone sign-in: the website's return page leaves the code)
+//   POST   /auth/google/claim     -> { handoff, verifier? } -> { session, user } | { pending: true }
 //   POST   /auth/session          -> { session } -> { user } or 401 when signed out
 //   POST   /auth/sign-out         -> { session }
 //   POST   /auth/forgot           -> { email }: emails a 6-digit code (same answer whether or not the account exists)
@@ -33,7 +35,7 @@
 // No dependencies: Postgres via Neon's HTTP SQL endpoint, S3 URLs signed with node:crypto.
 // Neon injects DATABASE_URL, AWS_* and NEON_AUTH_BASE_URL at runtime. ADMIN_KEY is set at deploy time.
 
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 
 const BUCKET = 'songs';
 const UPLOAD_URL_TTL = 15 * 60; // seconds
@@ -612,15 +614,65 @@ async function signInEmail(body, ip) {
 }
 
 // Google: step 1 gives the app the page to open and a "challenge" to bring back with the code.
+// For the phone app (return address with app=1) there's also a "handoff": a one-time id added to
+// the return address. The website's return page leaves the code here under that id, and the app
+// collects the session with it (/auth/google/claim), so sign-in finishes even when Android doesn't
+// pass the return link to the app, or restarts the app meanwhile.
 async function startGoogle(body, ip) {
-  const callbackURL = typeof body.callbackURL === 'string' ? body.callbackURL : '';
+  let callbackURL = typeof body.callbackURL === 'string' ? body.callbackURL : '';
   if (!CALLBACK_OK.test(callbackURL)) return json(400, { error: 'bad_callback', message: 'Not an allowed return address.' });
+  const forApp = new URL(callbackURL).searchParams.get('app') === '1';
+  const handoff = forApp ? randomUUID().replace(/-/g, '') : null;
+  if (handoff) callbackURL += `${callbackURL.includes('?') ? '&' : '?'}h=${handoff}`;
   const r = await authCall('POST', '/sign-in/social', { body: { provider: 'google', callbackURL, disableRedirect: true }, ip });
   if (!r.ok || !r.data?.url) return authError(r);
   const challenge = Object.entries(r.cookies)
     .filter(([name, value]) => value && CHALLENGE_MARKERS.some((m) => name.endsWith(m)))
     .map(([name, value]) => `${name}=${value}`).join('; ');
-  return json(200, { url: r.data.url, challenge });
+  if (handoff) {
+    await sql('DELETE FROM google_handoff WHERE created_at < now() - interval \'15 minutes\'');
+    await sql('INSERT INTO google_handoff (id, challenge) VALUES ($1, $2)', [handoff, challenge]);
+  }
+  return json(200, { url: r.data.url, challenge, handoff });
+}
+
+const HANDOFF_ID = /^[0-9a-f]{32}$/;
+
+// The website's return page (in the phone's browser tab) leaves Google's one-time code here.
+async function googleHandoff(body) {
+  const id = typeof body.handoff === 'string' && HANDOFF_ID.test(body.handoff) ? body.handoff : '';
+  const verifier = clean(body.verifier, 500);
+  if (!id || !verifier) return json(400, { error: 'missing', message: 'Missing sign-in details.' });
+  await sql(`UPDATE google_handoff SET verifier = $2
+             WHERE id = $1 AND verifier IS NULL AND created_at > now() - interval '15 minutes'`, [id, verifier]);
+  return json(200, { ok: true });
+}
+
+// The app collects its Google sign-in: { session, user } when it's done, { pending: true } while
+// the person is still on Google. The code comes from the return page (googleHandoff) or from the
+// app itself when Android did pass it the return link. Asking again after success gives the same
+// session for a few minutes, in case the app restarted before saving it.
+async function claimGoogle(body, ip) {
+  const id = typeof body.handoff === 'string' && HANDOFF_ID.test(body.handoff) ? body.handoff : '';
+  if (!id) return json(400, { error: 'missing', message: 'Sign-in didn\'t finish. Try again.' });
+  const rows = await sql(`SELECT challenge, verifier, session FROM google_handoff
+                          WHERE id = $1 AND created_at > now() - interval '15 minutes'`, [id]);
+  const row = rows[0];
+  if (!row) return json(404, { error: 'expired', message: 'Google sign-in took too long. Try again.' });
+  if (row.session) return signedIn(row.session, ip);
+  const verifier = clean(body.verifier, 500) || row.verifier;
+  if (!verifier) return json(200, { pending: true });
+  const r = await authCall('GET', '/get-session', { query: { neon_auth_session_verifier: verifier }, cookie: row.challenge || undefined, ip });
+  const session = r.cookies[SESSION_COOKIE];
+  if (!r.ok || !session) {
+    // The code works once: the app and the return page may both have sent it at the same moment.
+    await new Promise((r2) => setTimeout(r2, 1500)); // let the other request save the session
+    const again = await sql('SELECT session FROM google_handoff WHERE id = $1', [id]);
+    if (again[0]?.session) return signedIn(again[0].session, ip);
+    return json(400, { error: 'google_failed', message: 'Google sign-in didn\'t finish. Try again.' });
+  }
+  await sql('UPDATE google_handoff SET session = $2, verifier = NULL, challenge = NULL WHERE id = $1', [id, session]);
+  return signedIn(session, ip);
 }
 
 // Google: step 2, the one-time code from the return address -> a session.
@@ -802,6 +854,8 @@ async function route(request) {
         if (path === '/auth/sign-in') return await signInEmail(body, ip);
         if (path === '/auth/google') return await startGoogle(body, ip);
         if (path === '/auth/google/finish') return await finishGoogle(body, ip);
+        if (path === '/auth/google/handoff') return await googleHandoff(body);
+        if (path === '/auth/google/claim') return await claimGoogle(body, ip);
         if (path === '/auth/session') return await checkSession(body, ip);
         if (path === '/auth/sign-out') return await signOut(body, ip);
         if (path === '/auth/forgot') return await forgotPassword(body, ip);
