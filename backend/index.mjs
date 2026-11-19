@@ -12,6 +12,8 @@
 //   POST   /auth/google/finish    -> { verifier, challenge } -> { session, user }
 //   POST   /auth/session          -> { session } -> { user } or 401 when signed out
 //   POST   /auth/sign-out         -> { session }
+//   POST   /auth/forgot           -> { email }: emails a 6-digit code (same answer whether or not the account exists)
+//   POST   /auth/reset            -> { email, code, password } -> new password, then { session, user }
 //   POST   /me/library            -> sync likes, playlists, recently played and stats (see mergeLibrary)
 // Admin (header "x-admin-key: <ADMIN_KEY>"):
 //   POST   /admin/verify          -> 200 if the key is right
@@ -554,6 +556,10 @@ const AUTH_MESSAGES = {
   INVALID_EMAIL: 'That email address doesn\'t look right.',
   PASSWORD_TOO_SHORT: 'Use a password of at least 8 characters.',
   PASSWORD_TOO_LONG: 'That password is too long.',
+  INVALID_OTP: 'That code isn\'t right. Check the email and try again.',
+  OTP_EXPIRED: 'That code has expired. Ask for a new one.',
+  TOO_MANY_ATTEMPTS: 'Too many wrong codes. Ask for a new one.',
+  USER_NOT_FOUND: 'That code isn\'t right. Check the email and try again.',
 };
 function authError(r) {
   const code = r.data?.code || (r.status === 429 ? 'TOO_MANY_REQUESTS' : 'AUTH_FAILED');
@@ -626,6 +632,28 @@ async function finishGoogle(body, ip) {
   const session = r.cookies[SESSION_COOKIE];
   if (!r.ok || !session) return json(400, { error: 'google_failed', message: 'Google sign-in didn\'t finish. Try again.' });
   return signedIn(session, ip);
+}
+
+// Forgot password: Neon Auth emails a 6-digit code (Email OTP), typed into the app with a new password.
+async function forgotPassword(body, ip) {
+  const email = clean(body.email, 254).toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(400, { error: 'INVALID_EMAIL', message: AUTH_MESSAGES.INVALID_EMAIL });
+  const r = await authCall('POST', '/forget-password/email-otp', { body: { email }, ip });
+  if (!r.ok && r.status === 429) return authError(r);
+  // Same answer either way, so nobody can find out which emails have an account.
+  return json(200, { ok: true });
+}
+
+async function resetPassword(body, ip) {
+  const email = clean(body.email, 254).toLowerCase();
+  const code = clean(body.code, 20).replace(/\s+/g, '');
+  const password = typeof body.password === 'string' ? body.password : '';
+  if (!email || !code) return json(400, { error: 'missing', message: 'Enter the code from the email.' });
+  if (password.length < 8) return json(400, { error: 'PASSWORD_TOO_SHORT', message: AUTH_MESSAGES.PASSWORD_TOO_SHORT });
+  const r = await authCall('POST', '/email-otp/reset-password', { body: { email, otp: code, password }, ip });
+  if (!r.ok) return authError(r);
+  // Signed in straight away with the new password.
+  return signInEmail({ email, password }, ip);
 }
 
 async function checkSession(body, ip) {
@@ -776,6 +804,8 @@ async function route(request) {
         if (path === '/auth/google/finish') return await finishGoogle(body, ip);
         if (path === '/auth/session') return await checkSession(body, ip);
         if (path === '/auth/sign-out') return await signOut(body, ip);
+        if (path === '/auth/forgot') return await forgotPassword(body, ip);
+        if (path === '/auth/reset') return await resetPassword(body, ip);
       }
 
       if (path === '/me/library' && request.method === 'POST') {

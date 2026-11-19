@@ -33,4 +33,6 @@ export const startGoogle = (callbackURL) => post('/auth/google', { callbackURL }
 export const finishGoogle = (verifier, challenge) => post('/auth/google/finish', { verifier, challenge });
 export const checkSession = (session) => post('/auth/session', { session });
 export const signOutSession = (session) => post('/auth/sign-out', { session }).catch(() => {});
-export const syncLibrary = (session, body) => post('/me/library', body, { 'x-session': session });
+export const requestPasswordReset = (email) => post('/auth/forgot', { email });
+export const resetPasswordWithCode = (email, code, password) => post('/auth/reset', { email, code, password });
+export const syncLibrary =(session, body) => post('/me/library', body, { 'x-session': session });

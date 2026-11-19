@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { keyStore } from '../utils/files';
 import {
   checkSession, finishGoogle, signInWithEmail, signOutSession, signUpWithEmail,
+  requestPasswordReset, resetPasswordWithCode,
 } from '../api/auth';
 import { googleFlow, pendingGoogleReturn, forwardToApp } from '../utils/googleSignIn';
 import { clearLibraryForSignOut } from './LibraryContext';
@@ -110,6 +111,14 @@ export function AuthProvider({ children }) {
     if (back) await signedIn(await finishGoogle(back.verifier, back.challenge));
   }), [run, signedIn]);
 
+  // Forgot password: a 6-digit code by email, then the code + a new password (signs in).
+  const sendResetCode = useCallback(async (email) => {
+    let ok = false;
+    await run(async () => { await requestPasswordReset(email); ok = true; });
+    return ok;
+  }, [run]);
+  const resetPassword = useCallback((email, code, password) => run(async () => signedIn(await resetPasswordWithCode(email, code, password))), [run, signedIn]);
+
   const signOut = useCallback(async () => {
     const s = sessionRef.current;
     await clearAll();
@@ -118,8 +127,8 @@ export function AuthProvider({ children }) {
 
   const value = useMemo(() => ({
     status, user, session, busy, error, setError,
-    signInEmail, signUpEmail, signInGoogle, signOut, expired: clearAll,
-  }), [status, user, session, busy, error, signInEmail, signUpEmail, signInGoogle, signOut, clearAll]);
+    signInEmail, signUpEmail, signInGoogle, signOut, expired: clearAll, sendResetCode, resetPassword,
+  }), [status, user, session, busy, error, signInEmail, signUpEmail, signInGoogle, signOut, clearAll, sendResetCode, resetPassword]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
