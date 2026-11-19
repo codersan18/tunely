@@ -41,6 +41,12 @@ async function savedHandoff() {
 }
 const forget = () => AsyncStorage.removeItem(PENDING_KEY).catch(() => {});
 
+// Close the sign-in tab if it's still open. On Android dismissBrowser returns nothing (not a
+// promise), and calling .catch on that broke sign-in, so never let it throw.
+function closeBrowser() {
+  try { Promise.resolve(WebBrowser.dismissBrowser?.()).catch(() => {}); } catch (e) { /* already closed */ }
+}
+
 /** One try: { session, user } when signed in, null while the person is still on Google. */
 async function claim(handoff, verifier) {
   const data = await claimGoogle(handoff, verifier || undefined);
@@ -66,8 +72,8 @@ export async function googleFlow() {
       waiting = false;
       clearInterval(timer);
       sub.remove();
-      WebBrowser.dismissBrowser().catch(() => {});
       fn();
+      closeBrowser();
     };
     const ask = async () => {
       if (done || asking) return;
