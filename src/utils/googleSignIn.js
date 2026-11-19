@@ -13,7 +13,6 @@ import * as WebBrowser from 'expo-web-browser';
 import { Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { startGoogle, claimGoogle } from '../api/auth';
-import { diag } from './diag';
 
 // A tiny page that looks like the app's loading screen (public/app-return.html), so coming back
 // from Google doesn't flash the website.
@@ -54,7 +53,6 @@ function closeBrowser() {
 /** One try: { session, user } when signed in, null while the person is still on Google. */
 async function claim(handoff, verifier) {
   const data = await claimGoogle(handoff, verifier || undefined);
-  diag('claim', data?.pending ? 'pending' : `done session=${!!data?.session} (code=${!!verifier})`);
   if (data?.pending) return null;
   forget();
   return data;
@@ -89,7 +87,6 @@ export async function googleFlow() {
         // Back in the app without finishing Google: stop (a late finish is picked up by resumeGoogle).
         else if (closedAt && Date.now() - closedAt > GRACE_MS) end(() => resolve(null));
       } catch (e) {
-        diag('claim error', `${e.status} ${e.code} ${e.message}`);
         if (e.code !== 'offline') { forget(); end(() => reject(e)); }
       } finally {
         asking = false;
@@ -98,14 +95,13 @@ export async function googleFlow() {
     cancelWaiting = () => end(() => resolve(null));
     const timer = setInterval(ask, POLL_MS);
     const sub = Linking.addEventListener('url', (e) => {
-      diag('link while waiting', `h=${handoffFrom(e.url) === handoff} code=${!!verifierFrom(e.url)}`);
       const h = handoffFrom(e.url);
       if (h && h !== handoff) return; // an older sign-in's link
       verifier = verifierFrom(e.url) || verifier;
       ask();
     });
     WebBrowser.openAuthSessionAsync(url, APP_RETURN)
-      .then((r) => { diag('browser result', r.type); if (r.type === 'success') verifier = verifierFrom(r.url) || verifier; })
+      .then((r) => { if (r.type === 'success') verifier = verifierFrom(r.url) || verifier; })
       .catch(() => {})
       .finally(() => { closedAt = Date.now(); ask(); });
   });
@@ -138,7 +134,6 @@ export async function resumeGoogle(url) {
 /** At start: finish a Google sign-in, if one is open (the app may have been opened by its link). */
 export async function pendingGoogleReturn() {
   const url = await Linking.getInitialURL().catch(() => null);
-  diag('initial link', url ? `${url.split('?')[0]} h=${!!handoffFrom(url)} code=${!!verifierFrom(url)}` : 'none');
   return resumeGoogle(url);
 }
 

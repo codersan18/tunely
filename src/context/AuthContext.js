@@ -10,7 +10,6 @@ import { googleFlow, pendingGoogleReturn, resumeGoogle, cancelGoogle, forwardToA
 import { clearLibraryForSignOut } from './LibraryContext';
 import { clearStats } from '../utils/stats';
 import { removeAllScopes, setProfileScope, MAIN_PROFILE } from '../utils/profileScope';
-import { diag } from '../utils/diag';
 
 // The signed-in account. Signing in is required (App.js shows SignInScreen until then).
 // The session string lives in secure storage (phone) / localStorage (web); the account's name
@@ -37,18 +36,11 @@ export function AuthProvider({ children }) {
   const sessionRef = useRef(null); sessionRef.current = session;
 
   const signedIn = useCallback(async (data) => {
-    diag('signedIn', `session=${!!data?.session} len=${data?.session?.length || 0} user=${!!data?.user?.id} msg=${data?.message || ''}`);
     if (!data?.session) {
       setError(data?.message || 'Sign-in didn\'t finish. Try again.');
       return false;
     }
-    try {
-      await keyStore.set(SESSION_KEY, data.session);
-    } catch (e) {
-      diag('keyStore.set failed', e?.message);
-      throw e;
-    }
-    diag('saved');
+    await keyStore.set(SESSION_KEY, data.session);
     await AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user)).catch(() => {});
     setSession(data.session);
     setUser(data.user);
@@ -58,8 +50,7 @@ export function AuthProvider({ children }) {
     return true;
   }, []);
 
-  const clearAll = useCallback(async (why = '') => {
-    diag('clearAll', typeof why === 'string' ? why : 'expired');
+  const clearAll = useCallback(async () => {
     await keyStore.remove(SESSION_KEY).catch(() => {});
     // The account's things on this device, for every profile (downloads stay): see ProfilesContext.
     await AsyncStorage.multiRemove([USER_KEY, 'viberoom:profiles:v1', 'viberoom:profile:v1']).catch(() => {});
@@ -83,8 +74,7 @@ export function AuthProvider({ children }) {
       setUser(fresh);
       AsyncStorage.setItem(USER_KEY, JSON.stringify(fresh)).catch(() => {});
     } catch (e) {
-      diag('verify failed', `${e.status} ${e.code} ${e.message}`);
-      if (e.status === 401) clearAll('verify 401');
+      if (e.status === 401) clearAll();
       // offline or server trouble: stay signed in
     }
   }, [clearAll]);
@@ -94,9 +84,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (status === 'forwarding') return;
     (async () => {
-      diag('start');
-      const saved = await keyStore.get(SESSION_KEY).catch((e) => { diag('keyStore.get failed', e?.message); return null; });
-      diag('saved session?', String(!!saved));
+      const saved = await keyStore.get(SESSION_KEY).catch(() => null);
       if (saved) {
         let cached = null;
         try { cached = JSON.parse((await AsyncStorage.getItem(USER_KEY)) || 'null'); } catch (e) { /* none */ }
@@ -112,10 +100,8 @@ export function AuthProvider({ children }) {
       let ok = false;
       try {
         const back = await pendingGoogleReturn();
-        diag('pendingGoogleReturn', back ? 'got session' : 'nothing');
         if (back) ok = await signedIn(back);
       } catch (e) {
-        diag('start google error', `${e.status} ${e.code} ${e.message}`);
         setError(e.message || 'Google sign-in didn\'t finish. Try again.');
       } finally {
         setBusy(false);
@@ -136,10 +122,8 @@ export function AuthProvider({ children }) {
       let ok = false;
       try {
         const back = await resumeGoogle(url);
-        if (back) diag('resumeGoogle', `got session (url=${!!url})`);
         if (back) { setGoogleBusy(true); ok = await signedIn(back); }
       } catch (e) {
-        diag('resume error', `${e.status} ${e.code} ${e.message}`);
         setError(e.message);
       } finally {
         resuming.current = false;
@@ -162,18 +146,16 @@ export function AuthProvider({ children }) {
   const run = useCallback(async (fn) => {
     setBusy(true);
     setError('');
-    try { await fn(); } catch (e) { diag('run error', `${e.status} ${e.code} ${e.message}`); setError(e.message || 'Sign-in failed. Try again.'); } finally { setBusy(false); }
+    try { await fn(); } catch (e) { setError(e.message || 'Sign-in failed. Try again.'); } finally { setBusy(false); }
   }, []);
 
   const signInEmail = useCallback((email, password) => run(async () => signedIn(await signInWithEmail(email, password))), [run, signedIn]);
   const signUpEmail = useCallback((email, password, name) => run(async () => signedIn(await signUpWithEmail(email, password, name))), [run, signedIn]);
   const signInGoogle = useCallback(() => run(async () => {
-    diag('google tapped');
     setGoogleBusy(true);
     let ok = false;
     try {
       const back = await googleFlow();
-      diag('googleFlow done', back ? 'got session' : 'null');
       if (back) ok = await signedIn(back);
     } finally {
       if (!ok) setGoogleBusy(false);
@@ -190,11 +172,9 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(async () => {
     const s = sessionRef.current;
-    await clearAll('sign out');
+    await clearAll();
     if (s) signOutSession(s);
   }, [clearAll]);
-
-  useEffect(() => { diag('status', status); }, [status]);
 
   const value = useMemo(() => ({
     status, user, session, busy, error, setError, googleBusy, cancelGoogle, justSignedIn,

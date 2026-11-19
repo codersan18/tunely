@@ -5,7 +5,6 @@ import { useLibrary } from '../context/LibraryContext';
 import { syncLibrary } from '../api/auth';
 import { exportStats, setRemoteStats } from '../utils/stats';
 import { getDeviceId } from '../utils/device';
-import { diag } from '../utils/diag';
 import { getProfileScope } from '../utils/profileScope';
 import { useProfiles } from '../context/ProfilesContext';
 
@@ -35,8 +34,7 @@ export default function LibrarySync() {
       setRemoteStats(merged.statsOthers);
       lastSynced.current = JSON.stringify({ liked: merged.liked, playlists: merged.playlists, removed: merged.removed });
     } catch (e) {
-      diag('sync failed', `${e.status} ${e.code} ${e.message}`);
-      if (e.status === 401) expired('sync 401'); // signed out elsewhere
+      if (e.status === 401) expired(); // signed out elsewhere
       if (e.status === 404 && e.code === 'no_profile') gone(); // this profile was deleted on another device
       // offline: try again later
     } finally {
