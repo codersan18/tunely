@@ -3,6 +3,7 @@ import { Animated, Easing, StyleSheet, Text } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
+import { diag } from '../utils/diag';
 
 // Keep the system splash (logo only) up until the branded screen below has drawn.
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -18,10 +19,11 @@ async function applyUpdateIfAny(onUpdating) {
   if (__DEV__ || !Updates.isEnabled) return;
   try {
     const check = await withTimeout(Updates.checkForUpdateAsync(), UPDATE_WAIT_MS);
+    diag('update check', `available=${!!check?.isAvailable} running=${Updates.updateId || 'embedded'}`);
     if (!check?.isAvailable) return;
     onUpdating();
     const fetched = await withTimeout(Updates.fetchUpdateAsync(), UPDATE_WAIT_MS * 2);
-    if (fetched?.isNew) await Updates.reloadAsync();
+    if (fetched?.isNew) { diag('update reload'); await Updates.reloadAsync(); }
   } catch (e) {
     // Offline or server unreachable: carry on with the version we have.
   }

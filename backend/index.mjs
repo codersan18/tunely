@@ -847,6 +847,15 @@ async function route(request) {
       if (request.method === 'GET' && path === '/popular') return await popular(url);
       if (request.method === 'POST' && path === '/requests') return await addRequest(await request.json());
 
+      // TEMPORARY: the phone app's sign-in steps (src/utils/diag.js), kept for a day.
+      if (path === '/diag' && request.method === 'POST') {
+        const b = obj(await request.json().catch(() => ({})));
+        await sql('DELETE FROM client_diag WHERE at < now() - interval \'1 day\'');
+        await sql('INSERT INTO client_diag (run, n, step, info) VALUES ($1, $2, $3, $4)',
+          [clean(b.run, 20), Number(b.n) || 0, clean(b.step, 60), clean(b.info, 300)]);
+        return json(200, { ok: true });
+      }
+
       if (path.startsWith('/auth/') && request.method === 'POST') {
         const ip = clientIp(request);
         const body = obj(await request.json().catch(() => ({})));

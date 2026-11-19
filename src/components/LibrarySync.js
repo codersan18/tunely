@@ -5,6 +5,7 @@ import { useLibrary } from '../context/LibraryContext';
 import { syncLibrary } from '../api/auth';
 import { exportStats, setRemoteStats } from '../utils/stats';
 import { getDeviceId } from '../utils/device';
+import { diag } from '../utils/diag';
 
 const AFTER_CHANGE_MS = 3000;
 const EVERY_MS = 3 * 60 * 1000;
@@ -31,7 +32,8 @@ export default function LibrarySync() {
       setRemoteStats(merged.statsOthers);
       lastSynced.current = JSON.stringify({ liked: merged.liked, playlists: merged.playlists, removed: merged.removed });
     } catch (e) {
-      if (e.status === 401) expired(); // signed out elsewhere
+      diag('sync failed', `${e.status} ${e.code} ${e.message}`);
+      if (e.status === 401) expired('sync 401'); // signed out elsewhere
       // offline: try again later
     } finally {
       running.current = false;
