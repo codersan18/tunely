@@ -19,6 +19,7 @@ import RequestScreen from '../screens/RequestScreen';
 import EditorScreen from '../screens/EditorScreen';
 import EditsScreen from '../screens/EditsScreen';
 import PickSongScreen from '../screens/PickSongScreen';
+import ProfileScreen from '../screens/ProfileScreen';
 import MiniPlayer from '../components/MiniPlayer';
 import SongLinkHandler from '../components/SongLinkHandler';
 
@@ -48,8 +49,9 @@ const makeStack = (name, Component) => function TabStack() {
 const HomeStack = makeStack('HomeMain', HomeScreen);
 const SearchStack = makeStack('SearchMain', SearchScreen);
 const LibraryStack = makeStack('LibraryMain', LibraryScreen);
+const ProfileStack = makeStack('ProfileMain', ProfileScreen);
 
-const icons = { Home: 'home', Search: 'search', Library: 'library' };
+const icons = { Home: 'home', Search: 'search', Library: 'library', Profile: 'person-circle' };
 
 function Tabs({ navigation }) {
   return (
@@ -75,6 +77,7 @@ function Tabs({ navigation }) {
       <Tab.Screen name="Home" component={HomeStack} />
       <Tab.Screen name="Search" component={SearchStack} />
       <Tab.Screen name="Library" component={LibraryStack} options={{ title: 'Your Library' }} />
+      <Tab.Screen name="Profile" component={ProfileStack} />
     </Tab.Navigator>
     </>
   );

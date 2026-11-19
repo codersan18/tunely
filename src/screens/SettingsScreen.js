@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView, Switch, Image } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ScrollView, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Updates from 'expo-updates';
@@ -8,8 +8,6 @@ import { useSettings, TRANSITION_OPTIONS, SPEED_OPTIONS } from '../context/Setti
 import EqualizerSheet from '../components/EqualizerSheet';
 import { EQ_AVAILABLE, DATA_SAVER_AVAILABLE } from '../utils/playerExtras';
 import { presetName } from '../utils/eqPresets';
-import { useAuth } from '../context/AuthContext';
-import { confirmAction } from '../utils/platform';
 
 function Section({ title, children }) {
   return (
@@ -48,8 +46,6 @@ function Link({ icon, title, sub, onPress }) {
 export default function SettingsScreen({ navigation }) {
   const { transitions, dataSaver, speed, eqOn, eqBands, set } = useSettings();
   const [eqMenu, setEqMenu] = useState(false);
-  const { user, signOut } = useAuth();
-  const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
 
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
@@ -60,26 +56,6 @@ export default function SettingsScreen({ navigation }) {
         <Text style={styles.h1}>Settings</Text>
       </View>
       <ScrollView contentContainerStyle={styles.body}>
-        <Section title="Account">
-          <View style={styles.account}>
-            {user?.image
-              ? <Image source={{ uri: user.image }} style={styles.avatar} />
-              : <View style={[styles.avatar, styles.avatarEmpty]}><Text style={styles.avatarText}>{initial}</Text></View>}
-            <View style={{ flex: 1 }}>
-              <Text numberOfLines={1} style={styles.rowTitle}>{user?.name || 'Your account'}</Text>
-              <Text numberOfLines={1} style={styles.rowSub}>{user?.email || ''}</Text>
-            </View>
-          </View>
-          <Text style={styles.rowSub}>Your likes, playlists, recently played and listening stats are saved to this account and show up wherever you sign in. Downloads stay on each device.</Text>
-          <Pressable
-            onPress={() => confirmAction('Sign out?', 'Your likes and playlists stay in your account. Downloads stay on this device.', 'Sign out', signOut)}
-            style={({ pressed }) => [styles.signOut, pressed && { opacity: 0.6 }]}
-          >
-            <Ionicons name="log-out-outline" size={18} color={colors.danger} />
-            <Text style={styles.signOutText}>Sign out</Text>
-          </Pressable>
-        </Section>
-
         <Section title="Playback">
           <Text style={styles.rowTitle}>Smooth transitions</Text>
           <Text style={styles.rowSub}>Each song fades out at the end and the next one fades in.</Text>
@@ -147,11 +123,5 @@ const styles = StyleSheet.create({
   chipText: { color: colors.text, fontWeight: '600', fontSize: 13 },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   link: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 10 },
-  account: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 6 },
-  avatar: { width: 48, height: 48, borderRadius: 24 },
-  avatarEmpty: { backgroundColor: colors.accentDark, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: colors.accent, fontSize: 20, fontWeight: '800' },
-  signOut: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', marginTop: 12, borderRadius: 18, borderWidth: 1, borderColor: colors.danger, paddingHorizontal: 14, paddingVertical: 7 },
-  signOutText: { color: colors.danger, fontWeight: '700', fontSize: 14 },
   version: { color: colors.textDim, fontSize: 12, textAlign: 'center' },
 });
