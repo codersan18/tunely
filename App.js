@@ -17,7 +17,8 @@ import OpeningScreen from './src/components/OpeningScreen';
 import WebFrame from './src/components/WebFrame';
 import registerServiceWorker from './src/utils/serviceWorker';
 import { checkForNewVersion } from './src/utils/newVersion';
-import { appReturnUrl, isGoogleReturn } from './src/utils/googleSignIn';
+import * as SplashScreen from 'expo-splash-screen';
+import { appReturnUrl, isGoogleReturn, googleReturnPending } from './src/utils/googleSignIn';
 import LoadingScreen from './src/components/LoadingScreen';
 import StartCurtain from './src/components/StartCurtain';
 import { colors } from './src/theme';
@@ -76,10 +77,19 @@ function ProfileGate() {
 }
 
 export default function App() {
-  // No opening animation on the pages that come back from Google: signing in carries straight on.
-  const [opening, setOpening] = useState(() => !appReturnUrl() && !isGoogleReturn());
+  // No opening animation when coming back from Google (also when Android restarted the app while
+  // the person was on Google): signing in carries straight on. null = still finding out (the
+  // phone's start-up splash stays up meanwhile, so nothing flashes).
+  const [opening, setOpening] = useState(() => (appReturnUrl() || isGoogleReturn() ? false : null));
+  useEffect(() => {
+    if (opening !== null) return;
+    googleReturnPending().then(
+      (returning) => { if (returning) { SplashScreen.hide(); setOpening(false); } else setOpening(true); },
+      () => setOpening(true),
+    );
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Once the opening screen is gone, see whether a newer APK has been released.
-  useEffect(() => { if (!opening) checkForNewVersion(); }, [opening]);
+  useEffect(() => { if (opening === false) checkForNewVersion(); }, [opening]);
   return (
     <SafeAreaProvider>
       <WebFrame>

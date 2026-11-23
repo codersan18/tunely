@@ -26,6 +26,9 @@ const clearUrl = () => { try { window.history.replaceState(null, '', '/'); } cat
 /** Phone only. */
 export const resumeGoogle = async () => null;
 
+/** Same question as the phone's (googleSignIn.js), for the website: this page is the return from Google. */
+export const googleReturnPending = async () => isGoogleReturn();
+
 /** This page load is the website coming back from Google (not the phone app's hand-off). */
 export const isGoogleReturn = () => isCallback() && !!verifierFrom(window.location.href)
   && new URLSearchParams(window.location.search).get('app') !== '1';

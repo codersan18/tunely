@@ -6,7 +6,7 @@ import {
   checkSession, signInWithEmail, signOutSession, signUpWithEmail,
   requestPasswordReset, resetPasswordWithCode,
 } from '../api/auth';
-import { googleFlow, pendingGoogleReturn, resumeGoogle, cancelGoogle, forwardToApp } from '../utils/googleSignIn';
+import { googleFlow, pendingGoogleReturn, resumeGoogle, cancelGoogle, forwardToApp, googleReturnPending } from '../utils/googleSignIn';
 import { clearLibraryForSignOut } from './LibraryContext';
 import { clearStats } from '../utils/stats';
 import { removeAllScopes, setProfileScope, MAIN_PROFILE } from '../utils/profileScope';
@@ -19,6 +19,7 @@ import { removeAllScopes, setProfileScope, MAIN_PROFILE } from '../utils/profile
 
 const SESSION_KEY = 'viberoom.session';
 const USER_KEY = 'viberoom:user:v1';
+const RETURN_WAIT_TRIES = 5; // after a restart during Google sign-in: ask the server for it for up to ~8 s
 const RESUME_KEY = 'tunely:player:v1'; // the player's saved queue (PlayerContext)
 const AuthContext = createContext(null);
 
@@ -34,6 +35,8 @@ export function AuthProvider({ children }) {
   const [googleBusy, setGoogleBusy] = useState(false);
   const [justSignedIn, setJustSignedIn] = useState(false); // this start of the app signed in (the loading screens say so)
   const sessionRef = useRef(null); sessionRef.current = session;
+  const signedInRef = useRef(false); signedInRef.current = status === 'signed-in';
+  const startWaiting = useRef(false); // the start is waiting for a Google sign-in after a restart
 
   const signedIn = useCallback(async (data) => {
     if (!data?.session) {
@@ -93,19 +96,29 @@ export function AuthProvider({ children }) {
         setStatus('signed-in');
         return;
       }
-      const link = await Linking.getInitialURL().catch(() => null);
-      if (typeof link === 'string' && /auth\/callback|app-return\.html/.test(link)) setGoogleBusy(true);
-      setStatus('signed-out'); // after: a Google return shows the loading screen, never the form first
+      // In the middle of a Google sign-in (back from it, or Android restarted the app meanwhile)?
+      // Then the loading screen, never the form first.
+      const returning = await googleReturnPending();
+      if (returning) setGoogleBusy(true);
+      setStatus('signed-out');
       setBusy(true);
       let ok = false;
+      startWaiting.current = returning;
       try {
-        const back = await pendingGoogleReturn();
+        let back = await pendingGoogleReturn();
+        // Restarted before the browser handed the sign-in over: it arrives within seconds.
+        for (let i = 0; returning && !back && i < RETURN_WAIT_TRIES && !signedInRef.current; i++) {
+          await new Promise((r) => setTimeout(r, 1500));
+          back = signedInRef.current ? null : await resumeGoogle(null);
+        }
         if (back) ok = await signedIn(back);
+        else if (signedInRef.current) ok = true; // the return link got there first
       } catch (e) {
         setError(e.message || 'Google sign-in didn\'t finish. Try again.');
       } finally {
+        startWaiting.current = false;
         setBusy(false);
-        if (!ok) setGoogleBusy(false);
+        if (!ok && !signedInRef.current) setGoogleBusy(false);
       }
     })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -118,16 +131,17 @@ export function AuthProvider({ children }) {
     const resume = async (url) => {
       if (resuming.current) return;
       resuming.current = true;
-      if (typeof url === 'string' && /auth\/callback|app-return\.html/.test(url)) setGoogleBusy(true);
+      const fromLink = typeof url === 'string' && /auth\/callback|app-return\.html/.test(url);
+      if (fromLink) setGoogleBusy(true);
       let ok = false;
       try {
         const back = await resumeGoogle(url);
-        if (back) { setGoogleBusy(true); ok = await signedIn(back); }
+        if (back) { setGoogleBusy(true); ok = await signedIn(back); if (!ok) setGoogleBusy(false); }
       } catch (e) {
         setError(e.message);
       } finally {
         resuming.current = false;
-        if (!ok) setGoogleBusy(false);
+        if (!ok && fromLink && !startWaiting.current) setGoogleBusy(false);
       }
     };
     const linkSub = Linking.addEventListener('url', (e) => resume(e.url));

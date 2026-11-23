@@ -43,6 +43,11 @@ async function savedHandoff() {
   }
 }
 const forget = () => AsyncStorage.removeItem(PENDING_KEY).catch(() => {});
+// The person stopped waiting (Cancel, or came back without finishing Google): a late finish still
+// counts (resumeGoogle), but a fresh start of the app shouldn't wait for it.
+const markAbandoned = () => AsyncStorage.getItem(PENDING_KEY)
+  .then((raw) => { const p = raw && JSON.parse(raw); if (p) return AsyncStorage.setItem(PENDING_KEY, JSON.stringify({ ...p, abandoned: true })); return null; })
+  .catch(() => {});
 
 // Close the sign-in tab if it's still open. On Android dismissBrowser returns nothing (not a
 // promise), and calling .catch on that broke sign-in, so never let it throw.
@@ -85,14 +90,14 @@ export async function googleFlow() {
         const data = await claim(handoff, verifier);
         if (data) end(() => resolve(data));
         // Back in the app without finishing Google: stop (a late finish is picked up by resumeGoogle).
-        else if (closedAt && Date.now() - closedAt > GRACE_MS) end(() => resolve(null));
+        else if (closedAt && Date.now() - closedAt > GRACE_MS) { markAbandoned(); end(() => resolve(null)); }
       } catch (e) {
         if (e.code !== 'offline') { forget(); end(() => reject(e)); }
       } finally {
         asking = false;
       }
     };
-    cancelWaiting = () => end(() => resolve(null));
+    cancelWaiting = () => { markAbandoned(); end(() => resolve(null)); };
     const timer = setInterval(ask, POLL_MS);
     const sub = Linking.addEventListener('url', (e) => {
       const h = handoffFrom(e.url);
@@ -128,6 +133,22 @@ export async function resumeGoogle(url) {
     if (e.status === 404) { forget(); return null; } // too old: nothing to finish
     if (e.code !== 'offline') forget();
     throw e;
+  }
+}
+
+/**
+ * At start: is the app in the middle of a Google sign-in? It was opened by the return link, or
+ * Android closed it while the person was on Google (to free memory) and it's starting again.
+ * Then it shows "Signing you in…" (no opening animation, no login page) while it collects it.
+ */
+export async function googleReturnPending() {
+  const url = await Linking.getInitialURL().catch(() => null);
+  if (typeof url === 'string' && RETURN_LINK.test(url)) return true;
+  try {
+    const p = JSON.parse((await AsyncStorage.getItem(PENDING_KEY)) || 'null');
+    return !!(p?.handoff && !p.abandoned && Date.now() - p.at < PENDING_MS);
+  } catch (e) {
+    return false;
   }
 }
 
