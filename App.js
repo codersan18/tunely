@@ -6,6 +6,7 @@ import { LibraryProvider } from './src/context/LibraryContext';
 import { PlayerProvider } from './src/context/PlayerContext';
 import { CatalogProvider } from './src/context/CatalogContext';
 import { LocalMusicProvider } from './src/context/LocalMusicContext';
+import { VideosProvider } from './src/context/VideosContext';
 import { SettingsProvider } from './src/context/SettingsContext';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { ProfilesProvider, useProfiles } from './src/context/ProfilesContext';
@@ -63,6 +64,7 @@ function ProfileGate() {
       <LibrarySync />
       <CatalogProvider>
         <LocalMusicProvider>
+          <VideosProvider>
           <SettingsProvider>
             <PlayerProvider>
               <AppNavigator />
@@ -70,6 +72,7 @@ function ProfileGate() {
               <StartCurtain />
             </PlayerProvider>
           </SettingsProvider>
+          </VideosProvider>
         </LocalMusicProvider>
       </CatalogProvider>
     </LibraryProvider>

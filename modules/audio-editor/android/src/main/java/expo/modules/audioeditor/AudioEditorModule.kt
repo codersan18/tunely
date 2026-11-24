@@ -2,6 +2,7 @@ package expo.modules.audioeditor
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -21,6 +22,7 @@ class AudioEditorModule : Module() {
   private val context: Context
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
   private val worker = Executors.newSingleThreadExecutor()
+  private val thumbs = Executors.newFixedThreadPool(2) // video thumbnails, apart from long edits
   private val generation = AtomicInteger(0) // cancel() bumps it; running jobs then stop
   private val main = Handler(Looper.getMainLooper())
   private var preview: PreviewPlayer? = null
@@ -133,6 +135,57 @@ class AudioEditorModule : Module() {
       Unit
     }
 
+    // ---- videos (see VideoEdit.kt) ----
+
+    // Keeps the given parts of a video (trim / cut a part out), optionally without sound and
+    // turned, and saves it in Movies/VibeRoom. options: { segments: [{ startMs, endMs }], mute,
+    // rotate (0/90/180/270), name }. Resolves { uri, name, durationMs, size }.
+    AsyncFunction("editVideo") { uri: String, options: Map<String, Any?>, promise: Promise ->
+      runJob(promise, "ERR_VIDEO") { isCancelled ->
+        @Suppress("UNCHECKED_CAST")
+        val segments = (options["segments"] as? List<Map<String, Any?>> ?: emptyList()).map {
+          ((it["startMs"] as Number).toLong() * 1000) to ((it["endMs"] as Number).toLong() * 1000)
+        }
+        val name = safeName(options["name"] as? String ?: "")
+        var last = -1
+        val (temp, durationMs) = editVideo(
+          context, uri, segments,
+          mute = options["mute"] == true,
+          rotate = (options["rotate"] as? Number)?.toInt() ?: 0,
+          isCancelled = isCancelled,
+        ) { p ->
+          val pct = (p * 100).toInt()
+          if (pct != last) { last = pct; emit("onProgress", mapOf("progress" to p)) }
+        }
+        try {
+          val size = temp.length()
+          val saved = saveVideoToPhone(context, temp, name)
+          mapOf("uri" to saved.toString(), "name" to name, "durationMs" to durationMs.toDouble(), "size" to size.toDouble())
+        } finally {
+          temp.delete()
+        }
+      }
+    }
+
+    // A small picture of a video, cached; null when it can't be read.
+    AsyncFunction("videoThumbnail") { uri: String, maxSize: Int, promise: Promise ->
+      thumbs.execute {
+        try { promise.resolve(videoThumbnail(context, uri, maxSize)) } catch (e: Throwable) { promise.resolve(null) }
+      }
+    }
+
+    // The phone's media volume (0..1), for the video player's volume swipe.
+    Function("getVolume") {
+      val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      am.getStreamVolume(AudioManager.STREAM_MUSIC).toDouble() / am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+    }
+    Function("setVolume") { value: Double ->
+      val am = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+      am.setStreamVolume(AudioManager.STREAM_MUSIC, Math.round(value.coerceIn(0.0, 1.0) * max).toInt(), 0)
+      am.getStreamVolume(AudioManager.STREAM_MUSIC).toDouble() / max
+    }
+
     // Equalizer for songs as they play (see PlaybackEq.kt). `sessionId` is the player's audio session.
     Function("setPlaybackEq") { sessionId: Int, enabled: Boolean, gainsDb: List<Double> ->
       PlaybackEq.apply(sessionId, enabled, gainsDb)
@@ -143,6 +196,7 @@ class AudioEditorModule : Module() {
       stopPreview()
       generation.incrementAndGet()
       worker.shutdown()
+      thumbs.shutdown()
     }
   }
 }

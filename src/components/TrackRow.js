@@ -39,10 +39,11 @@ export default function TrackRow({ track, list, index, playlistId }) {
             <Text numberOfLines={1} style={styles.artist}>{track.artist}</Text>
           </View>
         </View>
-        <Pressable hitSlop={10} onPress={() => toggleLike(track)}>
+        <Pressable hitSlop={10} onPress={() => toggleLike(track)} accessibilityRole="button"
+          accessibilityLabel={liked ? `Unlike ${track.title}` : `Like ${track.title}`}>
           <Ionicons name={liked ? 'heart' : 'heart-outline'} size={22} color={liked ? colors.accent : colors.textMuted} />
         </Pressable>
-        <Pressable hitSlop={10} onPress={() => setMenu(true)}>
+        <Pressable hitSlop={10} onPress={() => setMenu(true)} accessibilityRole="button" accessibilityLabel={`More for ${track.title}`}>
           <Ionicons name="ellipsis-vertical" size={20} color={colors.textMuted} />
         </Pressable>
       </Pressable>

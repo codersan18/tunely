@@ -5,5 +5,7 @@ import { requireOptionalNativeModule } from 'expo';
 const AudioEditor = requireOptionalNativeModule('AudioEditor');
 
 export const EDITOR_SUPPORTED = !!AudioEditor;
+// Video editing, thumbnails and the phone's volume (VideoEdit.kt): APKs from before videos don't have them.
+export const VIDEO_TOOLS_SUPPORTED = typeof AudioEditor?.editVideo === 'function';
 export const EQ_BANDS = ['60 Hz', '230 Hz', '910 Hz', '3.6 kHz', '14 kHz'];
 export default AudioEditor;

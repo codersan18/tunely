@@ -9,6 +9,8 @@ import { fileFor } from '../../src/utils/localFiles';
 const AudioCtx = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
 export const EDITOR_SUPPORTED = !!AudioCtx && typeof indexedDB !== 'undefined';
 export const EQ_BANDS = ['60 Hz', '230 Hz', '910 Hz', '3.6 kHz', '14 kHz'];
+// Video editing is in the phone app only (it copies the video stream on the phone).
+export const VIDEO_TOOLS_SUPPORTED = false;
 const EQ_FREQS = [60, 230, 910, 3600, 14000];
 
 // ---- events ----

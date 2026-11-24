@@ -1,5 +1,7 @@
-import React from 'react';
-import { View, Text, Pressable, StyleSheet, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, Pressable, StyleSheet, FlatList, ActivityIndicator, RefreshControl, ScrollView } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import VideosHome from '../components/VideosHome';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,12 +32,29 @@ function Carousel({ title, data, renderItem, keyExtractor }) {
   );
 }
 
+const MODE_KEY = 'viberoom:home-mode:v1';
+
 export default function HomeScreen({ navigation }) {
   const { playTrack } = usePlayer();
   const { recent, liked, downloadedTracks, playlists } = useLibrary();
   const { songs, artists, albums, popular, status, refreshing, refresh } = useCatalog();
   const top = popular.slice(0, 15);
   const name = useProfiles().profile?.name || '';
+  // Music | Videos (remembered on this device).
+  const [mode, setMode] = useState('music');
+  useEffect(() => { AsyncStorage.getItem(MODE_KEY).then((m) => { if (m === 'videos') setMode('videos'); }).catch(() => {}); }, []);
+  const switchTo = (m) => { setMode(m); AsyncStorage.setItem(MODE_KEY, m).catch(() => {}); };
+  const toggle = (
+    <View style={styles.toggle} accessibilityRole="tablist">
+      {[['music', 'Music', 'musical-notes'], ['videos', 'Videos', 'film']].map(([m, label, icon]) => (
+        <Pressable key={m} onPress={() => switchTo(m)} style={[styles.toggleItem, mode === m && styles.toggleOn]}
+          accessibilityRole="tab" accessibilityState={{ selected: mode === m }}>
+          <Ionicons name={icon} size={15} color={mode === m ? colors.bg : colors.text} />
+          <Text style={[styles.toggleText, mode === m && { color: colors.bg }]}>{label}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
   const open = (playlistId) => navigation.navigate('Playlist', { playlistId });
 
   // Quick-access tiles: the user's own collections.
@@ -65,6 +84,7 @@ export default function HomeScreen({ navigation }) {
         <Text style={styles.h1} numberOfLines={2}>
           {greeting()}{name ? ' ' : ''}{!!name && <Text style={styles.name}>{name}</Text>}
         </Text>
+        {toggle}
       </View>
 
       {(status === 'offline' || status === 'error') && (
@@ -147,6 +167,24 @@ export default function HomeScreen({ navigation }) {
     </View>
   );
 
+  if (mode === 'videos') {
+    return (
+      <LinearGradient colors={['#1D3B33', colors.bg]} locations={[0, 0.35]} style={{ flex: 1 }}>
+        <SafeAreaView edges={['top']} style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={{ paddingBottom: 140 }} showsVerticalScrollIndicator={false}>
+            <View style={styles.header}>
+              <Text style={styles.h1} numberOfLines={2}>
+                {greeting()}{name ? ' ' : ''}{!!name && <Text style={styles.name}>{name}</Text>}
+              </Text>
+              {toggle}
+            </View>
+            <VideosHome navigation={navigation} />
+          </ScrollView>
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
+
   return (
     <LinearGradient colors={['#1D3B33', colors.bg]} locations={[0, 0.35]} style={{ flex: 1 }}>
       <SafeAreaView edges={['top']} style={{ flex: 1 }}>
@@ -176,6 +214,10 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 16 },
   h1: { color: colors.text, fontSize: 24, fontWeight: '800' },
   name: { color: colors.accent },
+  toggle: { flexDirection: 'row', alignSelf: 'flex-start', marginTop: 12, backgroundColor: colors.surfaceHigh, borderRadius: 20, padding: 3 },
+  toggleItem: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 7, borderRadius: 17 },
+  toggleOn: { backgroundColor: colors.accent },
+  toggleText: { color: colors.text, fontWeight: '800', fontSize: 14 },
   h2: { color: colors.text, fontSize: 21, fontWeight: '800', marginTop: 28, marginBottom: 12, paddingHorizontal: 16 },
   row: { gap: 14, paddingHorizontal: 16 },
   h2Row: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingRight: 16 },

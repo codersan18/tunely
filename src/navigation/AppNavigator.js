@@ -20,6 +20,9 @@ import EditorScreen from '../screens/EditorScreen';
 import EditsScreen from '../screens/EditsScreen';
 import PickSongScreen from '../screens/PickSongScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import VideoFolderScreen from '../screens/VideoFolderScreen';
+import VideoPlayerScreen from '../screens/VideoPlayerScreen';
+import VideoEditorScreen from '../screens/VideoEditorScreen';
 import MiniPlayer from '../components/MiniPlayer';
 import SongLinkHandler from '../components/SongLinkHandler';
 
@@ -42,6 +45,7 @@ const makeStack = (name, Component) => function TabStack() {
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="Stats" component={StatsScreen} />
       <Stack.Screen name="Edits" component={EditsScreen} />
+      <Stack.Screen name="VideoFolder" component={VideoFolderScreen} />
     </Stack.Navigator>
   );
 };
@@ -111,6 +115,16 @@ export default function AppNavigator() {
         <Root.Screen
           name="PickSong"
           component={PickSongScreen}
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+        <Root.Screen
+          name="VideoPlayer"
+          component={VideoPlayerScreen}
+          options={{ presentation: 'fullScreenModal', animation: 'fade' }}
+        />
+        <Root.Screen
+          name="VideoEditor"
+          component={VideoEditorScreen}
           options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
         />
         <Root.Screen

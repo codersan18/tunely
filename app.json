@@ -67,7 +67,8 @@
         "expo-media-library",
         {
           "granularPermissions": [
-            "audio"
+            "audio",
+            "video"
           ]
         }
       ],
@@ -96,7 +97,14 @@
           }
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": true,
+          "supportsPictureInPicture": true
+        }
+      ]
     ],
     "extra": {
       "eas": {
